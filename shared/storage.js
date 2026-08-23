@@ -157,6 +157,7 @@ export function emptyState() {
       quickChat: true,
       inputDot: true,
       browserControl: true,
+      webSearchEnabled: true,
       readPageByDefault: true,
       thinkingDefault: false,
       disabledSites: [],

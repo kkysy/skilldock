@@ -38,6 +38,7 @@ function fillGeneral() {
   $("inputDot").checked = s.inputDot !== false;
   $("quickChat").checked = s.quickChat;
   $("browserControl").checked = s.browserControl;
+  $("webSearchEnabled").checked = s.webSearchEnabled !== false;
   $("readPageByDefault").checked = s.readPageByDefault;
   $("thinkingDefault").checked = !!s.thinkingDefault;
   $("disabledSites").value = (s.disabledSites || []).join("\n");
@@ -192,6 +193,7 @@ async function init() {
       inputDot: $("inputDot").checked,
       quickChat: $("quickChat").checked,
       browserControl: $("browserControl").checked,
+      webSearchEnabled: $("webSearchEnabled").checked,
       readPageByDefault: $("readPageByDefault").checked,
       thinkingDefault: $("thinkingDefault").checked,
       disabledSites: $("disabledSites").value.split("\n").map((s) => s.trim()).filter(Boolean),

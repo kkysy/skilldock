@@ -15,6 +15,7 @@ Skilldock is a Chromium Manifest V3 extension that puts a bring-your-own-key AI 
 - **Page-aware chat** — send the current page's readable text and relevant images with a question; attach other tabs when needed.
 - **Bring your own model** — OpenAI, Anthropic, Google Gemini, OpenRouter, Ollama, and OpenAI-compatible endpoints.
 - **Skills you control** — invoke reusable prompts with `/`, choose quick skills, and configure whether a skill may read pages, search the web, or use browser tools.
+- **Web research without tab clutter** — search results include titles, URLs, and snippets; the assistant can read a selected public result page directly without opening a tab.
 - **In-page assistance** — selection toolbar, a quick-chat popup, and an optional writing dot beside focused inputs.
 - **Attachments and PDF reader** — paste screenshots, attach text files and PDFs, inspect PDFs in the built-in viewer, then send them to chat.
 - **Careful browser actions** — page reading, tab listing, link extraction, page search, and optional click/fill/scroll/open-tab tools. Actions that can change a page require confirmation.
@@ -25,7 +26,7 @@ Skilldock is a Chromium Manifest V3 extension that puts a bring-your-own-key AI 
 
 Skilldock stores its settings, providers, API keys, skills, and conversation history in `chrome.storage.local`. It does not operate a Skilldock server or require an account.
 
-When you send a message, the selected model provider receives the message and any context you explicitly include or have enabled (for example, page text, attachments, and page images). If web search is enabled for a skill, the extension queries DuckDuckGo's HTML search endpoint. Review each provider's privacy terms before using it with sensitive content.
+When you send a message, the selected model provider receives the message and any context you explicitly include or have enabled (for example, page text, attachments, and page images). When global web search is enabled—and, for a custom skill, that skill also permits it—the extension queries DuckDuckGo's HTML search endpoint and may retrieve a selected public result page for the answer. Review each provider's privacy terms before using it with sensitive content.
 
 ## Install from source
 

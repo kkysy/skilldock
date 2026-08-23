@@ -10,6 +10,7 @@ const COPY = {
     "输入框蓝点": "Writing assistant", "网页文本框聚焦时，在输入框边缘浮出写作助手入口（润色、续写、翻译）。": "Show writing actions (rewrite, continue, translate) beside focused text fields.",
     "快捷问（Alt+Q）": "Quick chat (Alt+Q)", "在任意页面用快捷键唤起侧边栏提问。": "Open the side panel from any page with a shortcut.",
     "允许浏览器操作": "Allow browser control", "允许 AI 点击、填写、滚动网页。敏感操作前会再次征求你的同意，请留意确认弹窗。": "Allow AI to click, fill, and scroll pages. Sensitive actions always require your approval.",
+    "允许联网搜索": "Allow web search", "允许 AI 通过 DuckDuckGo 搜索公开网页。关闭后，所有技能都不能使用网络搜索。": "Allow AI to search the public web through DuckDuckGo. When off, no skill can use web search.",
     "默认附带当前页内容": "Include current page by default", "每次提问自动读取当前标签页正文。页面内容会随请求发送给你配置的模型服务商。": "Read the current tab with every question. Its content is sent to your configured model provider.",
     "默认开启思考模式": "Enable thinking by default", "仅对支持推理的模型生效，可能增加响应耗时与 token 费用。": "Only applies to reasoning-capable models and may increase latency and token costs.",
     "高级": "Advanced", "禁用站点": "Disabled sites", "每行一个域名，这些站点上不显示划词工具条和输入框蓝点": "One domain per line. The selection toolbar and writing assistant are hidden on these sites.",

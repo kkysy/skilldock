@@ -8,6 +8,7 @@ import {
 } from "../shared/storage.js";
 import { streamChat, canonicalToolName, TOOL_DEFS } from "../shared/providers.js";
 import { uid, truncate, matchSite, hostOf, safeJson } from "../shared/utils.js";
+import { decodeHtml, extractReadableHtml, isSafePublicHttpUrl } from "../shared/web.js";
 
 async function enablePanel() {
   await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
@@ -78,6 +79,7 @@ const sessions = new Map();
 const PAGE_CHUNK_CHARS = 10000;
 const MAX_INITIAL_PAGE_CHARS = 10000;
 const MAX_TOTAL_PAGE_CHARS = 30000;
+const MAX_SEARCH_RESULT_BYTES = 1_500_000;
 
 function send(port, msg) {
   try {
@@ -335,12 +337,20 @@ async function webSearch(query) {
   const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 Skilldock" } });
   const html = await res.text();
   const results = [];
+  const snippets = [...html.matchAll(/class="result__snippet"[^>]*>([\s\S]*?)<\/(?:a|div)>/gi)]
+    .map((x) => decodeHtml(x[1].replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim());
   const re = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
   let m;
   while ((m = re.exec(html)) && results.length < 6) {
-    const href = m[1].replace(/&amp;/g, "&");
-    const title = m[2].replace(/<[^>]+>/g, "").trim();
-    if (title) results.push({ title, url: href });
+    let target;
+    try {
+      const href = new URL(m[1].replace(/&amp;/g, "&"), url);
+      target = href.searchParams.get("uddg") || href.href;
+    } catch {
+      continue;
+    }
+    const title = decodeHtml(m[2].replace(/<[^>]+>/g, "")).trim();
+    if (title) results.push({ title, url: target, snippet: snippets[results.length] || "" });
   }
   if (!results.length) {
     const re2 = /uddg=([^&"]+)/g;
@@ -350,15 +360,63 @@ async function webSearch(query) {
     let i = 0;
     let mm;
     while ((mm = re2.exec(html)) && results.length < 6) {
-      results.push({ title: titles[i++] || decodeURIComponent(mm[1]), url: decodeURIComponent(mm[1]) });
+      results.push({ title: titles[i] || decodeURIComponent(mm[1]), url: decodeURIComponent(mm[1]), snippet: snippets[i++] || "" });
     }
   }
   return results;
 }
 
+async function readResponseText(response, maxBytes) {
+  const reader = response.body?.getReader?.();
+  if (!reader) return (await response.text()).slice(0, maxBytes);
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    text += decoder.decode(value, { stream: bytes < maxBytes });
+    if (bytes >= maxBytes) return text;
+  }
+  return text + decoder.decode();
+}
+
+async function fetchSearchResultPage(rawUrl) {
+  let current = rawUrl;
+  for (let redirectCount = 0; redirectCount <= 3; redirectCount++) {
+    if (!isSafePublicHttpUrl(current)) return { error: "只允许读取公开 HTTP(S) 网页，已拒绝本机、私有地址或非常规端口。" };
+    let response;
+    try {
+      response = await fetch(current, { credentials: "omit", redirect: "manual", referrerPolicy: "no-referrer" });
+    } catch (error) {
+      return { error: `读取搜索结果失败：${error.message}` };
+    }
+    if (response.status >= 300 && response.status < 400) {
+      const next = response.headers.get("location");
+      if (!next) return { error: "搜索结果页面重定向但未提供目标地址。" };
+      current = new URL(next, current).href;
+      continue;
+    }
+    if (!response.ok) return { error: `搜索结果页面返回 ${response.status}。` };
+    const type = (response.headers.get("content-type") || "").toLowerCase();
+    if (type && !type.includes("text/html") && !type.includes("application/xhtml+xml")) {
+      return { error: `搜索结果不是可读取的 HTML 网页（${type.split(";")[0]}）。` };
+    }
+    const length = Number(response.headers.get("content-length"));
+    if (Number.isFinite(length) && length > MAX_SEARCH_RESULT_BYTES) return { error: "搜索结果页面过大，未读取。" };
+    const html = await readResponseText(response, MAX_SEARCH_RESULT_BYTES);
+    return { url: current, ...extractReadableHtml(html, current) };
+  }
+  return { error: "搜索结果页面重定向次数过多。" };
+}
+
 const RISK_TOOLS = new Set(["click_element", "fill_element", "open_tab"]);
 
 async function runTool(name, args, ctx) {
+  if (name === "web_search" && !ctx.webSearchEnabled) {
+    return "联网搜索已在设置中关闭。请根据已有页面上下文作答。";
+  }
   const tab = await getTab(ctx.tabId);
   const tabId = args.tabId || tab?.id;
   const resolved = canonicalToolName(name);
@@ -421,7 +479,27 @@ async function runTool(name, args, ctx) {
     case "web_search": {
       const results = await webSearch(args.query || "");
       if (!results.length) return "没有搜索结果";
-      return results.map((r, i) => `${i + 1}. ${r.title}\n${r.url}`).join("\n\n");
+      return results.map((r, i) => `${i + 1}. ${r.title}\n${r.url}${r.snippet ? `\n摘要：${r.snippet}` : ""}`).join("\n\n");
+    }
+    case "read_search_result": {
+      if (!args.url) return "缺少搜索结果 URL。";
+      let url;
+      try {
+        url = new URL(args.url).href;
+      } catch {
+        return "搜索结果 URL 无效。";
+      }
+      const cacheKey = `search-result:${url}`;
+      let page = ctx.cache?.get(cacheKey);
+      if (!page) {
+        page = await fetchSearchResultPage(url);
+        if (!page.error) ctx.cache?.set(cacheKey, page);
+      }
+      if (page.error) return page.error;
+      const fullText = page.text || page.description || "";
+      const start = Math.max(0, Math.min(Number(args.start) || 0, fullText.length));
+      const end = Math.min(start + PAGE_CHUNK_CHARS, fullText.length);
+      return `搜索结果页面：${page.title}\n来源：${page.url}\n位置：${start}-${end} / ${fullText.length}\n还有后续内容：${end < fullText.length ? "是" : "否"}\n下一段 start：${end < fullText.length ? end : start}${page.description ? `\n摘要：${page.description}` : ""}\n\n${fullText.slice(start, end)}`;
     }
     default:
       return `未知工具 ${name}。可用工具：${TOOL_DEFS.map((t) => t.name).join(", ")}。请直接根据已有页面上下文作答，不要再调用不存在的工具。`;
@@ -432,12 +510,13 @@ function toolNamesFor(settings, skill) {
   const names = [];
   const read = skill?.tools?.readPage ?? settings.readPageByDefault;
   if (read) names.push("read_page", "list_tabs", "extract_links", "search_page");
-  if (skill?.tools?.webSearch) names.push("web_search");
+  const canSearchWeb = settings.webSearchEnabled !== false && (!skill || skill?.tools?.webSearch);
+  if (canSearchWeb) names.push("web_search", "read_search_result");
   if (settings.browserControl && skill?.tools?.browser) {
     names.push("click_element", "fill_element", "scroll_page", "open_tab");
   }
   if (!skill && settings.readPageByDefault) {
-    names.push("read_page", "list_tabs", "extract_links", "search_page", "web_search");
+    names.push("read_page", "list_tabs", "extract_links", "search_page");
     if (settings.browserControl) names.push("click_element", "fill_element", "scroll_page", "open_tab");
   }
   return [...new Set(names)];
@@ -558,6 +637,7 @@ async function handleChat(port, req) {
 
   const toolCache = new Map();
   const includePage = req.includePage !== false && (skill?.tools?.readPage ?? settings.readPageByDefault);
+  const toolNames = toolNamesFor(settings, skill);
   if (includePage && tab?.id) {
     const ctx = await collectContext(tab.id, req.extraTabIds || [], toolCache);
     if (ctx.text) userText += `\n\n---\n当前页面上下文：\n${ctx.text}`;
@@ -583,7 +663,10 @@ async function handleChat(port, req) {
   const systemParts = [settings.systemPrompt || ""];
   if (skill?.instructions) systemParts.push(`技能说明：\n${skill.instructions}`);
   if (includePage) {
-    systemParts.push("当前用户消息里只有当前页面的首段预览，不是全文。若问题涉及全文、文献、事件经过或预览中未出现的内容，必须调用 read_page；根据结果中的‘下一段 start’连续读取后续分段，直到‘还有后续内容：否’或已有足够证据。不要重复读取相同 start。工具名必须是 read_page、list_tabs、extract_links、search_page、web_search、open_tab、click_element、fill_element、scroll_page 之一，不要拼接或重复工具名。");
+    systemParts.push(`当前用户消息里只有当前页面的首段预览，不是全文。若问题涉及全文、文献、事件经过或预览中未出现的内容，必须调用 read_page；根据结果中的‘下一段 start’连续读取后续分段，直到‘还有后续内容：否’或已有足够证据。不要重复读取相同 start。只可调用以下工具：${toolNames.join("、")}。不要拼接或重复工具名。`);
+  }
+  if (toolNames.includes("read_search_result")) {
+    systemParts.push("联网检索后，如需依据某个结果页回答，应调用 read_search_result 并传入 web_search 返回的 URL；它会直接返回网页正文，不要为读取内容而调用 open_tab。若结果有后续内容，使用其 nextStart 继续读取。");
   }
   const llmMessages = [
     { role: "system", content: systemParts.filter(Boolean).join("\n\n") },
@@ -599,7 +682,6 @@ async function handleChat(port, req) {
     }))
   ];
 
-  const toolNames = toolNamesFor(settings, skill);
   const assistantId = uid("msg");
   const t0 = Date.now();
   send(port, { type: "conversation", conversation: conv });
@@ -690,7 +772,7 @@ async function handleChat(port, req) {
           } else if (failedTools.has(call.name) && !TOOL_DEFS.some((t) => t.name === call.name)) {
             result = `已拒绝重复调用未知工具 ${call.name}。请根据已有上下文直接作答。`;
           } else {
-            result = allowed ? await runTool(call.name, args, { tabId: tab?.id, cache: toolCache }) : "用户拒绝了此操作";
+            result = allowed ? await runTool(call.name, args, { tabId: tab?.id, cache: toolCache, webSearchEnabled: settings.webSearchEnabled !== false }) : "用户拒绝了此操作";
           }
         } catch (e) {
           result = `工具失败: ${e.message}`;

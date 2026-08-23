@@ -102,11 +102,23 @@ export const TOOL_DEFS = [
   },
   {
     name: "web_search",
-    description: "Search the public web and return title/url/snippet results.",
+    description: "Search the public web and return title, URL, and snippet results. To read a result page, call read_search_result with its URL; do not open a browser tab just to read it.",
     parameters: {
       type: "object",
       properties: { query: { type: "string" } },
       required: ["query"]
+    }
+  },
+  {
+    name: "read_search_result",
+    description: "Fetch one public HTTP(S) search-result page without opening a tab, and return a sequential readable-text segment. Use nextStart when hasMore is true.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "A URL returned by web_search." },
+        start: { type: "integer", description: "Character position from the previous nextStart. Defaults to 0." }
+      },
+      required: ["url"]
     }
   }
 ];
