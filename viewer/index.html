@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Skilldock PDF 阅读器</title>
+    <link rel="stylesheet" href="viewer.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <img src="../icons/icon32.png" alt="" class="logo" />
+      <span id="title" class="title">PDF 阅读器</span>
+      <span class="grow"></span>
+      <span id="pageInfo" class="page-info"></span>
+      <button id="zoomOut" class="btn icon" title="缩小" aria-label="缩小">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <path d="M5 12h14" />
+        </svg>
+      </button>
+      <span id="zoomLabel" class="zoom-label">100%</span>
+      <button id="zoomIn" class="btn icon" title="放大" aria-label="放大">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <path d="M12 5v14" /><path d="M5 12h14" />
+        </svg>
+      </button>
+      <button id="btnAsk" class="btn primary" disabled>带去提问</button>
+    </header>
+
+    <main id="pages" class="pages"></main>
+
+    <div id="empty" class="empty">
+      <p>把本地 PDF 拖到这里，或</p>
+      <button id="btnPick" class="btn primary">选择 PDF 文件</button>
+      <input id="fileInput" type="file" accept=".pdf,application/pdf" hidden />
+      <p class="hint">也可以在网页 PDF 链接上右键 →「用 Skilldock 阅读此 PDF」。</p>
+    </div>
+
+    <script type="module" src="viewer.js"></script>
+  </body>
+</html>

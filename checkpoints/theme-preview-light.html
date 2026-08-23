@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="../sidepanel/sidepanel.css" />
+    <script>
+      // ?theme=light 预览浅色；默认深色（:root）
+      if (new URLSearchParams(location.search).get("theme") === "light") {
+        document.documentElement.dataset.theme = "light";
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <header class="top">
+        <button class="icon-btn" title="历史" aria-label="历史">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h10" />
+          </svg>
+        </button>
+        <div class="brand">
+          <img src="../icons/icon32.png" alt="" />
+          <span>Skilldock</span>
+        </div>
+        <button class="icon-btn" title="新对话" aria-label="新对话">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 5v14" /><path d="M5 12h14" />
+          </svg>
+        </button>
+        <button class="icon-btn" title="设置" aria-label="设置">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.2" />
+            <path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.2 5.2l1.7 1.7M17.1 17.1l1.7 1.7M18.8 5.2l-1.7 1.7M6.9 17.1l-1.7 1.7" />
+          </svg>
+        </button>
+      </header>
+
+      <main class="messages">
+        <article class="msg user">
+          <div class="who">你</div>
+          <div class="body">总结一下这篇文章的要点，并解释第三章的图表。</div>
+        </article>
+
+        <details class="trace" open>
+          <summary>思考 · 2 次工具</summary>
+          <article class="msg think">
+            <div class="who">思考</div>
+            <div class="body">先读取页面正文，再提取链接确认出处……</div>
+          </article>
+          <article class="msg tool">
+            <div class="body">read_page 完成：Title: 示例文章……</div>
+          </article>
+          <article class="msg tool">
+            <div class="body">extract_links 完成：- 参考1: https://example.com</div>
+          </article>
+        </details>
+
+        <article class="msg assistant">
+          <div class="who">Skilldock</div>
+          <div class="body">以下是文章的三个要点：第一……第二……第三……第三章的图表展示了对比趋势。</div>
+          <div class="msg-foot" style="--force:1">
+            <span class="elapsed">12.4s</span>
+            <button type="button" title="复制" style="opacity:1">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></svg>
+            </button>
+            <button type="button" title="重生成" style="opacity:1">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.2 6.2" /><path d="M20 5v6h-6" /></svg>
+            </button>
+            <button type="button" title="导出" style="opacity:1">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11" /><path d="M7 11l5 5 5-5" /><path d="M4 20h16" /></svg>
+            </button>
+          </div>
+        </article>
+
+        <article class="msg user">
+          <div class="who">你</div>
+          <div class="body">换成英文再总结一次。</div>
+        </article>
+
+        <article class="msg assistant streaming">
+          <div class="who">Skilldock</div>
+          <div class="body">Here are the three key points of the article</div>
+        </article>
+      </main>
+
+      <button class="to-top" type="button" title="回到顶部">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5" /><path d="M5 12l7-7 7 7" /></svg>
+      </button>
+
+      <footer class="composer">
+        <div class="chips">
+          <span class="chip">示例页面标题<button>×</button></span>
+        </div>
+        <div class="box">
+          <textarea id="input" rows="2" placeholder="随便问，/ 使用技能，可直接粘贴截图"></textarea>
+          <div class="bar">
+            <label class="chk"><input type="checkbox" checked /> 当前页</label>
+            <label class="chk"><input type="checkbox" /> 思考</label>
+            <button class="ghost" type="button">+ 标签页</button>
+            <button class="ghost" type="button">+ 文件</button>
+            <span class="grow"></span>
+            <button class="primary" type="button">发送</button>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>

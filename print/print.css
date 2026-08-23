@@ -1,0 +1,80 @@
+/* 打印 / 导出 PDF 页专用样式：固定浅色，不跟随扩展主题 */
+body {
+  background: #fff;
+  color: #1c2430;
+  margin: 0;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+.bar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: #f4f4f5;
+  border-bottom: 1px solid #e5e7eb;
+}
+.bar .grow { flex: 1; }
+.bar button {
+  background: #3dbea5;
+  color: #06221e;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+#doc {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+}
+h1.title { font-size: 22px; margin: 0 0 4px; }
+.meta { color: #667085; font-size: 12px; margin-bottom: 24px; }
+.m { margin: 0 0 18px; }
+.who { font-size: 12px; color: #667085; margin-bottom: 4px; }
+.m.user .body {
+  background: #f0faf6;
+  border: 1px solid #d8ece4;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.m.tool,
+.m.think {
+  border: 1px dashed #d0d5dd;
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: #475467;
+  font-size: 13px;
+}
+.m.tool summary,
+.m.think summary { cursor: pointer; }
+.m p { margin: 0.4em 0; }
+.m ul, .m ol { margin: 0.4em 0 0.4em 1.2em; padding: 0; }
+.m table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.m td { border: 1px solid #e5e7eb; padding: 4px 6px; }
+blockquote {
+  border-left: 3px solid #d0d5dd;
+  margin: 6px 0;
+  padding: 2px 10px;
+  color: #475467;
+}
+.code {
+  background: #f6f8fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px;
+  overflow: auto;
+  font-size: 12px;
+}
+.code-lang { color: #b07d2b; font-size: 11px; margin-bottom: 4px; }
+.katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.math-fallback { font-family: Consolas, "Courier New", monospace; color: #b07d2b; }
+@media print {
+  .no-print { display: none; }
+  #doc { max-width: none; padding: 0; }
+  .m { break-inside: avoid; }
+}

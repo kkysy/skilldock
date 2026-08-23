@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Skilldock</title>
+    <link rel="stylesheet" href="../vendor/katex/katex.min.css" />
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="top">
+        <div class="brand">
+          <img src="../icons/icon32.png" alt="" />
+          <span>Skilldock</span>
+        </div>
+        <div class="top-actions">
+          <button id="btnHistory" class="icon-btn" title="历史" aria-label="历史">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h10" />
+            </svg>
+          </button>
+          <button id="btnNew" class="icon-btn" title="新对话" aria-label="新对话">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 5v14" /><path d="M5 12h14" />
+            </svg>
+          </button>
+          <button id="btnSettings" class="icon-btn" title="设置" aria-label="设置">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 3.5v2.25M12 18.25v2.25M20.5 12h-2.25M5.75 12H3.5M18.01 5.99l-1.59 1.59M7.58 16.42l-1.59 1.59M18.01 18.01l-1.59-1.59M7.58 7.58 5.99 5.99" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="selection-source" aria-hidden="true">
+        <select id="provider"></select>
+        <select id="model"></select>
+      </div>
+
+      <aside id="history" class="drawer hidden">
+        <div class="drawer-hd">
+          <strong>聊天历史</strong>
+          <input id="historySearch" placeholder="搜索…" />
+        </div>
+        <div id="historyList" class="drawer-list"></div>
+      </aside>
+
+      <main id="messages" class="messages"></main>
+
+      <div id="permission" class="perm hidden">
+        <div>
+          <p id="permText"></p>
+          <div class="row">
+            <button id="permDeny" class="ghost">拒绝</button>
+            <button id="permAllow" class="primary">允许</button>
+          </div>
+        </div>
+      </div>
+
+      <footer class="composer">
+        <div id="chips" class="chips"></div>
+        <div class="composer-head">
+          <span class="composer-context"><span class="context-dot"></span>准备好开始对话</span>
+          <div class="model-picker-wrap">
+            <button id="btnModel" class="model-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" title="切换模型">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M7 5.5h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z" />
+                <path d="M8.5 9h7M8.5 12h4.5M8.5 15h3" />
+              </svg>
+              <span id="modelLabel">选择模型</span>
+              <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+            <div id="modelPicker" class="model-picker hidden" role="dialog" aria-label="选择模型">
+              <div class="model-picker-head">
+                <strong>选择模型</strong>
+                <button id="btnCloseModel" class="picker-close" type="button" aria-label="关闭模型选择">×</button>
+              </div>
+              <div id="modelPickerBody" class="model-picker-body"></div>
+            </div>
+          </div>
+        </div>
+        <div class="box">
+          <div class="composer-inline-row">
+            <button id="btnSkillContext" class="skill-context" type="button" aria-haspopup="listbox" aria-expanded="false" title="选择技能">
+              <span class="skill-context-prefix">/</span><span id="skillContextLabel">技能</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 10 5 5 5-5" /></svg>
+            </button>
+            <div id="skillPicker" class="skill-picker hidden" role="listbox" aria-label="选择技能"></div>
+          </div>
+          <textarea id="input" rows="2" placeholder="随便问，/ 使用技能，可直接粘贴截图"></textarea>
+          <div class="bar">
+            <div class="bar-start">
+              <select id="skill" class="skill-tool-select hidden" aria-label="选择技能">
+                <option value="">技能</option>
+              </select>
+              <label class="tool-toggle" title="把当前网页正文附加到问题"><input type="checkbox" id="includePage" /><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5h14v15H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg><span>当前页</span></label>
+              <label class="tool-toggle" title="让支持的模型先输出推理过程再作答"><input type="checkbox" id="thinking" /><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4" /><path d="M8.4 14.8A6.4 6.4 0 1 1 15.7 15c-.9.7-1.4 1.5-1.5 2.4h-4.4c-.1-1-.6-1.8-1.4-2.6Z" /></svg><span>思考</span></label>
+              <button id="btnAdd" class="add-btn" type="button" title="添加页面或文件" aria-haspopup="menu" aria-expanded="false" aria-label="添加页面或文件">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              </button>
+            </div>
+            <input id="fileInput" type="file" multiple hidden accept="image/*,.pdf,.txt,.md,.json,.csv,.js,.py,.html,.css,.log" />
+            <span class="grow"></span>
+            <button id="btnStop" class="stop-btn hidden" type="button">停止</button>
+            <button id="btnSend" class="send-btn" type="button" title="发送消息" aria-label="发送消息" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg></button>
+          </div>
+          <div id="attachmentMenu" class="attachment-menu hidden" role="menu" aria-label="添加页面或文件">
+            <div class="attachment-menu-title">添加到对话</div>
+            <button id="btnTabs" class="attachment-option" type="button" role="menuitem">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6h12v12H6z" /><path d="M9 3h9a3 3 0 0 1 3 3v9" /></svg><span>其他标签页</span><span class="option-chevron">›</span>
+            </button>
+            <button id="btnFiles" class="attachment-option" type="button" role="menuitem">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 6.5-7.8 7.8a3.2 3.2 0 0 0 4.5 4.5l8-8a4.5 4.5 0 0 0-6.4-6.4l-8.1 8.1a5.8 5.8 0 0 0 8.2 8.2l7.3-7.3" /></svg><span>图片或文件</span>
+            </button>
+            <div id="tabPicker" class="tab-picker hidden" aria-label="选择其它标签页"></div>
+          </div>
+        </div>
+        <div id="slash" class="slash hidden"></div>
+      </footer>
+    </div>
+    <script src="../vendor/katex/katex.min.js"></script>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

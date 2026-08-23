@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "Skilldock — 网页 AI 助手"
+  },
+  "extDescription": {
+    "message": "每个网页旁的本地 AI 助手。自定义技能、多模型（GPT / Claude / Gemini / OpenRouter / Ollama），无订阅、无广告。"
+  }
+}

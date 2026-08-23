@@ -1,0 +1,151 @@
+#skilldock-root {
+  all: initial;
+  position: fixed;
+  z-index: 2147483646;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  color: #e7ecf3;
+}
+
+.sd-toolbar {
+  position: absolute;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: #161b22;
+  border: 1px solid #2a3340;
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+}
+
+.sd-toolbar button {
+  all: unset;
+  cursor: pointer;
+  padding: 5px 8px;
+  border-radius: 7px;
+  color: #e7ecf3;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.sd-toolbar button:hover {
+  background: #24303a;
+  color: #3dbea5;
+}
+
+.sd-quick {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  width: 360px;
+  max-width: calc(100vw - 36px);
+  background: #161b22;
+  border: 1px solid #2a3340;
+  border-radius: 9px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.sd-quick.hidden {
+  display: none;
+}
+
+.sd-quick-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: #11201d;
+  color: #d7efe8;
+  font-weight: 600;
+}
+
+.sd-quick-hd button {
+  all: unset;
+  cursor: pointer;
+  padding: 2px 6px;
+  opacity: 0.8;
+}
+
+.sd-quick textarea {
+  all: unset;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 12px;
+  color: #e7ecf3;
+  background: #161b22;
+}
+
+.sd-quick-ft {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 10px 10px;
+}
+
+.sd-quick-ft button {
+  all: unset;
+  cursor: pointer;
+  background: #3dbea5;
+  color: #06221e;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+/* 输入框蓝点 */
+.sd-dot {
+  all: unset;
+  position: fixed;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #3dbea5;
+  color: #06221e;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  z-index: 2147483646;
+  opacity: 0.92;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.sd-dot:hover {
+  transform: scale(1.12);
+  opacity: 1;
+}
+
+.sd-dot-menu {
+  position: fixed;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  min-width: 130px;
+  background: #161b22;
+  border: 1px solid #2a3340;
+  border-radius: 7px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  z-index: 2147483646;
+}
+
+.sd-dot-menu button {
+  all: unset;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 7px;
+  color: #e7ecf3;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.sd-dot-menu button:hover {
+  background: #24303a;
+  color: #3dbea5;
+}

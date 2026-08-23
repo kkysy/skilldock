@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>欢迎使用 Skilldock</title>
+    <link rel="stylesheet" href="onboarding.css" />
+  </head>
+  <body>
+    <main class="stage">
+      <header class="hd">
+        <img src="../icons/icon48.png" alt="" />
+        <span>Skilldock</span>
+        <button id="skip" class="ghost" type="button">跳过</button>
+      </header>
+
+      <section class="card">
+        <div class="art" id="art"></div>
+        <h1 id="title"></h1>
+        <p id="desc"></p>
+        <ul id="points"></ul>
+      </section>
+
+      <footer class="ft">
+        <div class="dots" id="dots"></div>
+        <div class="navbtns">
+          <button id="prev" class="ghost" type="button">上一步</button>
+          <button id="next" class="primary" type="button">下一步</button>
+        </div>
+      </footer>
+    </main>
+    <script type="module" src="onboarding.js"></script>
+  </body>
+</html>

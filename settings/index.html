@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Skilldock 设置</title>
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <header>
+      <img src="../icons/icon32.png" alt="" />
+      <div>
+        <h1>Skilldock 设置</h1>
+        <p>密钥只存在本机。没有账户、订阅或广告。</p>
+      </div>
+    </header>
+    <nav>
+      <button data-tab="general" class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M8 14v6" /></svg><span>常规</span></button>
+      <button data-tab="models"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M8 9h8M8 13h5" /></svg><span>模型</span></button>
+      <button data-tab="skills"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.5 4.2L18 9l-4.5 1.8L12 15l-1.5-4.2L6 9l4.5-1.8L12 3Z" /><path d="m18 14 .7 2.1L21 17l-2.3.9L18 20l-.7-2.1L15 17l2.3-.9L18 14Z" /></svg><span>技能</span></button>
+      <button data-tab="data"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z" /><path d="M8 9h8M8 13h8M8 17h5" /></svg><span>数据</span></button>
+    </nav>
+
+    <section id="general" class="tab">
+      <div class="group">
+        <h2>外观</h2>
+        <div class="item">
+          <div class="item-main">
+            <span class="item-title">语言</span>
+            <span class="item-desc">界面显示语言</span>
+          </div>
+          <select id="language" class="inline">
+            <option value="zh-CN">中文</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <div class="item">
+          <div class="item-main">
+            <span class="item-title">主题</span>
+            <span class="item-desc">侧边栏与设置页的配色</span>
+          </div>
+          <select id="theme" class="inline">
+            <option value="system">跟随系统</option>
+            <option value="dark">深色</option>
+            <option value="light">浅色</option>
+          </select>
+        </div>
+        <div class="item col">
+          <div class="item-main">
+            <span class="item-title">字号 <b id="fontSizeVal" class="val">14</b></span>
+            <span class="item-desc">调整设置页与侧边栏里的文字大小</span>
+          </div>
+          <div class="slider-row">
+            <span class="aa aa-small" aria-hidden="true">A</span>
+            <input id="fontSize" type="range" min="12" max="20" step="1" aria-label="字号" />
+            <span class="aa aa-big" aria-hidden="true">A</span>
+          </div>
+          <p class="font-preview" id="fontPreview">敏捷的棕色狐狸跳过懒狗。The quick brown fox jumps over the lazy dog.</p>
+        </div>
+      </div>
+
+      <div class="group">
+        <h2>功能与权限</h2>
+        <label class="item switch-row">
+          <div class="item-main">
+            <span class="item-title">划词工具条</span>
+            <span class="item-desc">选中网页文字后浮出快捷操作。需要读取页面内容才能工作。</span>
+          </div>
+          <input id="selectionToolbar" type="checkbox" class="switch" />
+        </label>
+        <label class="item switch-row">
+          <div class="item-main">
+            <span class="item-title">输入框蓝点</span>
+            <span class="item-desc">网页文本框聚焦时，在输入框边缘浮出写作助手入口（润色、续写、翻译）。</span>
+          </div>
+          <input id="inputDot" type="checkbox" class="switch" />
+        </label>
+        <label class="item switch-row">
+          <div class="item-main">
+            <span class="item-title">快捷问（Alt+Q）</span>
+            <span class="item-desc">在任意页面用快捷键唤起侧边栏提问。</span>
+          </div>
+          <input id="quickChat" type="checkbox" class="switch" />
+        </label>
+        <label class="item switch-row">
+          <div class="item-main">
+            <span class="item-title">允许浏览器操作</span>
+            <span class="item-desc">允许 AI 点击、填写、滚动网页。敏感操作前会再次征求你的同意，请留意确认弹窗。</span>
+          </div>
+          <input id="browserControl" type="checkbox" class="switch" />
+        </label>
+        <label class="item switch-row">
+          <div class="item-main">
+            <span class="item-title">默认附带当前页内容</span>
+            <span class="item-desc">每次提问自动读取当前标签页正文。页面内容会随请求发送给你配置的模型服务商。</span>
+          </div>
+          <input id="readPageByDefault" type="checkbox" class="switch" />
+        </label>
+        <label class="item switch-row">
+          <div class="item-main">
+            <span class="item-title">默认开启思考模式</span>
+            <span class="item-desc">仅对支持推理的模型生效，可能增加响应耗时与 token 费用。</span>
+          </div>
+          <input id="thinkingDefault" type="checkbox" class="switch" />
+        </label>
+      </div>
+
+      <div class="group">
+        <h2>高级</h2>
+        <div class="item col">
+          <div class="item-main">
+            <span class="item-title">禁用站点</span>
+            <span class="item-desc">每行一个域名，这些站点上不显示划词工具条和输入框蓝点</span>
+          </div>
+          <textarea id="disabledSites" rows="4" placeholder="example.com"></textarea>
+        </div>
+        <div class="item col">
+          <div class="item-main">
+            <span class="item-title">系统提示词</span>
+            <span class="item-desc">附加在每次对话开头的全局指令</span>
+          </div>
+          <textarea id="systemPrompt" rows="5"></textarea>
+        </div>
+      </div>
+      <button id="saveGeneral" class="primary save-general"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h12l3 3v13H5z" /><path d="M8 4v6h8V4M8 20v-6h8v6" /></svg><span>保存常规设置</span></button>
+    </section>
+
+    <section id="models" class="tab hidden">
+      <div class="two-col">
+        <div id="providerList" class="col-list"></div>
+        <div class="col-side">
+          <h3>添加 OpenAI 兼容接口</h3>
+          <label class="field"><span>名称</span><input id="cName" placeholder="如 DeepSeek" /></label>
+          <label class="field"><span>Base URL</span><input id="cUrl" placeholder="https://api.deepseek.com/v1" /></label>
+          <label class="field"><span>API Key</span><input id="cKey" placeholder="可留空" /></label>
+          <label class="field"><span>模型</span><input id="cModels" placeholder="多个模型用逗号分隔" /></label>
+          <button id="addCustom" class="primary">添加</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="skills" class="tab hidden">
+      <div class="two-col">
+        <div class="col-list">
+          <p>技能完全本地，可自由创建、编辑、设为快捷技能。输入框里用 / 调用。</p>
+          <div id="skillList"></div>
+        </div>
+        <div class="col-side">
+          <h3 id="skillFormTitle">新建技能</h3>
+          <label class="field"><span>名称</span><input id="sName" placeholder="例如：总结当前页" /></label>
+          <label class="field"><span>斜杠命令</span><input id="sSlash" placeholder="例如：summarize" /></label>
+          <label class="field"><span>简介</span><input id="sDesc" placeholder="一句话说明技能用途" /></label>
+          <label class="field"><span>技能说明 / 系统指令</span><textarea id="sInst" rows="6" placeholder="描述技能应该如何工作"></textarea></label>
+          <label class="row"><input id="sQuick" type="checkbox" /> 快捷技能</label>
+          <label class="row"><input id="sRead" type="checkbox" checked /> 可读当前页</label>
+          <label class="row"><input id="sBrowser" type="checkbox" /> 可用浏览器操作</label>
+          <label class="row"><input id="sSearch" type="checkbox" /> 可用网络搜索</label>
+          <button id="addSkill" class="primary">保存技能</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="data" class="tab hidden">
+      <p>导出或导入设置、技能和对话。对话仅保留用户和助手可见的文字及助手思考，不含网页上下文、附件或图片。文件只在本地处理。</p>
+      <div class="row data-actions">
+        <button id="exportBtn" class="data-action data-action-primary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10M8 10l4 4 4-4M5 20h14" /></svg><span>导出 JSON</span></button>
+        <button id="importBtn" class="data-action"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V10M8 14l4-4 4 4M5 4h14" /></svg><span>导入 JSON</span></button>
+        <input id="importFile" type="file" accept="application/json" hidden />
+      </div>
+      <p id="dataMsg"></p>
+    </section>
+    <script type="module" src="settings.js"></script>
+  </body>
+</html>
