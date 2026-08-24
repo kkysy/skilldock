@@ -37,7 +37,6 @@ function fillGeneral() {
   $("fontSize").value = s.fontSize;
   syncFontSize(s.fontSize);
   $("selectionToolbar").checked = s.selectionToolbar;
-  $("inputDot").checked = s.inputDot !== false;
   $("quickChat").checked = s.quickChat;
   $("browserControl").checked = s.browserControl;
   $("webSearchEnabled").checked = s.webSearchEnabled !== false;
@@ -53,7 +52,6 @@ function readGeneralSettings() {
     theme: $("theme").value,
     fontSize: Number($("fontSize").value) || 14,
     selectionToolbar: $("selectionToolbar").checked,
-    inputDot: $("inputDot").checked,
     quickChat: $("quickChat").checked,
     browserControl: $("browserControl").checked,
     webSearchEnabled: $("webSearchEnabled").checked,
@@ -269,7 +267,7 @@ async function init() {
     scheduleGeneralSave();
   });
   $("fontSize").addEventListener("change", saveGeneralSettings);
-  ["selectionToolbar", "inputDot", "quickChat", "browserControl", "webSearchEnabled", "readPageByDefault", "thinkingDefault"].forEach((id) => {
+  ["selectionToolbar", "quickChat", "browserControl", "webSearchEnabled", "readPageByDefault", "thinkingDefault"].forEach((id) => {
     $(id).addEventListener("change", saveGeneralSettings);
   });
   ["disabledSites", "systemPrompt"].forEach((id) => {

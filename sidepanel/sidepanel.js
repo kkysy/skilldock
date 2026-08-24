@@ -64,6 +64,8 @@ let attachments = [];
 let pendingPerm = null;
 let activeId = null;
 let editingMessageId = null;
+// 本地刚发出、尚未拿到后台真实 id 的用户消息，用于就地更新避免整栏重渲染
+let pendingUser = null;
 let selectedSkillIds = [];
 let historyExportId = null;
 const popupTimers = new WeakMap();
@@ -334,7 +336,7 @@ function renderConv(conv) {
     return;
   }
   els.messages.innerHTML = "";
-  const latestUserId = [...conv.messages].reverse().find((m) => m.role === "user")?.id;
+  const latestUserId = [...conv.messages].reverse().find((m) => m.role === "user" && !m.fromTool)?.id;
   for (const m of conv.messages) {
     if (m.role === "system") continue;
     if (m.role === "tool") {
@@ -343,6 +345,11 @@ function renderConv(conv) {
         role: "tool",
         content: `${m.name} 完成：${String(m.content || "").slice(0, 120)}`
       });
+      continue;
+    }
+    if (m.role === "user" && m.fromTool) {
+      // 模型通过 send_page_image 等工具发来的图片：渲染为图片卡片而非用户气泡
+      addToolImageCard(m.id, m.images);
       continue;
     }
     if (m.thinking) addMsgEl({ id: `think-${m.id}`, role: "think", content: m.thinking });
@@ -539,6 +546,49 @@ async function forkFrom(msgId) {
   hidePopup(els.history);
 }
 
+function openLightbox(src) {
+  const overlay = document.createElement("div");
+  overlay.className = "sd-lightbox";
+  const img = document.createElement("img");
+  img.src = src;
+  overlay.appendChild(img);
+  overlay.addEventListener("click", () => overlay.remove());
+  document.body.appendChild(overlay);
+}
+
+function appendImages(container, images) {
+  if (!images?.length) return;
+  const grid = document.createElement("div");
+  grid.className = "msg-images";
+  for (const src of images) {
+    const img = document.createElement("img");
+    img.src = src;
+    img.alt = "";
+    img.loading = "lazy";
+    img.addEventListener("click", () => openLightbox(src));
+    grid.appendChild(img);
+  }
+  container.appendChild(grid);
+}
+
+// 模型通过 send_page_image 等工具发来的图片卡片
+function addToolImageCard(id, images) {
+  if (els.messages.querySelector(".empty")) els.messages.innerHTML = "";
+  let el = els.messages.querySelector(`[data-id="${id}"]`);
+  if (el) return el;
+  el = document.createElement("article");
+  el.className = "msg toolimg";
+  el.dataset.id = id;
+  const cap = document.createElement("div");
+  cap.className = "toolimg-cap";
+  cap.textContent = t("模型发送的页面图片", language());
+  el.appendChild(cap);
+  appendImages(el, images);
+  els.messages.appendChild(el);
+  els.messages.scrollTop = els.messages.scrollHeight;
+  return el;
+}
+
 function addMsgEl(m) {
   const el = document.createElement("article");
   el.className = `msg ${m.role}`;
@@ -618,8 +668,20 @@ function onPort(msg) {
     if (i >= 0) state.conversations[i] = msg.conversation;
     else state.conversations.unshift(msg.conversation);
     // 后台会在流式回答开始前回传带有真实消息 id 的会话。
-    // 重新渲染可替换本地临时用户消息，确保最新消息的编辑按钮稳定挂载。
-    renderConv(msg.conversation);
+    // 若本地临时用户消息就是会话里的最后一条用户消息，就地换上真实 id 并补齐操作按钮，
+    // 避免整栏重渲染导致所有消息重播入场动画（闪烁）。
+    const tempEl = pendingUser && els.messages.querySelector(`[data-id="${pendingUser.id}"]`);
+    const realUser = [...(msg.conversation.messages || [])].reverse().find((m) => m.role === "user");
+    if (tempEl && realUser && (realUser.display ?? realUser.content) === pendingUser.text) {
+      pendingUser = null;
+      tempEl.dataset.id = realUser.id;
+      tempEl.querySelector(".user-foot")?.remove();
+      attachMsgActions(tempEl, realUser);
+      attachUserFooter(tempEl, realUser, true);
+    } else {
+      pendingUser = null;
+      renderConv(msg.conversation);
+    }
   }
   if (msg.type === "assistant_start") {
     streamBuf.id = msg.id;
@@ -660,6 +722,10 @@ function onPort(msg) {
         : (language() === "en" ? `${msg.name} completed: ${String(msg.result || "").slice(0, 220)}` : `${msg.name} 完成：${String(msg.result || "").slice(0, 220)}`);
     el.querySelector(".body").textContent = text;
     els.messages.scrollTop = els.messages.scrollHeight;
+  }
+  if (msg.type === "toolimg") {
+    streamBuf.afterTools = true;
+    addToolImageCard(msg.id, msg.images);
   }
   if (msg.type === "permission") {
     pendingPerm = msg.id;
@@ -770,6 +836,7 @@ async function send() {
   const localUser = { id: uid("u"), role: "user", content: text, display: text, createdAt: Date.now() };
   const localEl = addMsgEl(localUser);
   attachUserFooter(localEl, localUser, true);
+  pendingUser = { id: localUser.id, text };
   els.input.value = "";
   updateSendState();
   hideSlash();

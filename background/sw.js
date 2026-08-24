@@ -109,7 +109,7 @@ async function getTab(tabId) {
   return focused || current;
 }
 
-// executeScript 注入的自包含回退函数，逻辑需与 content/content.js 的 extractPage/grabPageImages 保持同步
+// executeScript 注入的自包含回退函数，逻辑需与 content/content.js 的 extractPage/grabPageImages/pageImageCandidates/getPageImage 保持同步
 async function extractPageFn(withImages, start = 0, maxLength = 10000) {
   const root = [
     document.querySelector("main"),
@@ -181,6 +181,19 @@ async function extractPageFn(withImages, start = 0, maxLength = 10000) {
     }
     page.images = images;
   }
+  // 与 content.js 同步：图片元数据（不含字节流）随手附上
+  const seenMeta = new Set();
+  page.imageList = [...document.images]
+    .map((im) => ({
+      src: im.currentSrc || im.src,
+      alt: (im.alt || "").trim().slice(0, 120),
+      w: im.naturalWidth,
+      h: im.naturalHeight
+    }))
+    .filter((c) => c.w >= 200 && c.h >= 150 && /^https?:/.test(c.src) && !seenMeta.has(c.src) && seenMeta.add(c.src))
+    .sort((a, b) => b.w * b.h - a.w * a.h)
+    .slice(0, 10)
+    .map((c, i) => ({ index: i, ...c }));
   return page;
 }
 
@@ -236,6 +249,61 @@ function scrollFn(direction) {
   else if (direction === "bottom") window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
   else window.scrollBy({ top: map[direction] || map.down, behavior: "smooth" });
   return { ok: true };
+}
+
+// 与 content/content.js 的 pageImageCandidates/listPageImages/getPageImage 保持同步
+function listImagesFn() {
+  const seen = new Set();
+  const images = [...document.images]
+    .map((im) => ({
+      src: im.currentSrc || im.src,
+      alt: (im.alt || "").trim().slice(0, 120),
+      w: im.naturalWidth,
+      h: im.naturalHeight
+    }))
+    .filter((c) => c.w >= 200 && c.h >= 150 && /^https?:/.test(c.src) && !seen.has(c.src) && seen.add(c.src))
+    .sort((a, b) => b.w * b.h - a.w * a.h)
+    .slice(0, 20)
+    .map((c, i) => ({ index: i, ...c }));
+  return { ok: true, images };
+}
+
+async function getImageFn(index, url) {
+  const imgToJpeg = async (src, maxDim = 1024) => {
+    const blob = await (await fetch(src)).blob();
+    if (!blob.type.startsWith("image/") || blob.type.includes("svg")) return null;
+    const bmp = await createImageBitmap(blob);
+    const scale = Math.min(1, maxDim / Math.max(bmp.width, bmp.height, 1));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bmp.width * scale));
+    canvas.height = Math.max(1, Math.round(bmp.height * scale));
+    canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close();
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+    return dataUrl.length <= 1200000 ? dataUrl : null;
+  };
+  const seen = new Set();
+  const cands = [...document.images]
+    .map((im) => ({
+      src: im.currentSrc || im.src,
+      alt: (im.alt || "").trim().slice(0, 120),
+      w: im.naturalWidth,
+      h: im.naturalHeight
+    }))
+    .filter((c) => c.w >= 200 && c.h >= 150 && /^https?:/.test(c.src) && !seen.has(c.src) && seen.add(c.src))
+    .sort((a, b) => b.w * b.h - a.w * a.h)
+    .slice(0, 50)
+    .map((c, i) => ({ index: i, ...c }));
+  const want = String(url || "").trim();
+  const cand = want ? cands.find((c) => c.src === want) : cands[Number(index) || 0];
+  if (!cand) return { ok: false, error: want ? "页面上找不到这张图片。" : "页面上没有这个序号的图片，请先列出页面图片。" };
+  try {
+    const dataUrl = await imgToJpeg(cand.src);
+    if (!dataUrl) return { ok: false, error: "图片无法读取或体积过大。" };
+    return { ok: true, dataUrl, src: cand.src, alt: cand.alt, w: cand.w, h: cand.h };
+  } catch (err) {
+    return { ok: false, error: `图片抓取失败：${err.message}` };
+  }
 }
 
 function pickBestPage(results) {
@@ -325,6 +393,19 @@ async function callTab(tabId, message) {
         args: [message.direction || "down"]
       });
       return r?.result || { ok: false, error: "滚动失败" };
+    } else if (message.type === "LIST_IMAGES") {
+      const [r] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: listImagesFn
+      });
+      return r?.result || { ok: false, error: "列出图片失败" };
+    } else if (message.type === "GET_IMAGE") {
+      const [r] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: getImageFn,
+        args: [message.index ?? 0, message.url || ""]
+      });
+      return r?.result || { ok: false, error: "抓取图片失败" };
     }
   } catch (err) {
     return { ok: false, error: `无法读取此页：${err.message}` };
@@ -476,6 +557,28 @@ async function runTool(name, args, ctx) {
       const r = await callTab(tabId, { type: "SCROLL", direction: args.direction || "down" });
       return r?.ok ? `已滚动 ${args.direction || "down"}` : r?.error || "滚动失败";
     }
+    case "list_page_images": {
+      const page = await callTab(tabId, { type: "LIST_IMAGES" });
+      if (!page?.ok) return page?.error || "列出页面图片失败";
+      const list = page.images || [];
+      if (!list.length) return "当前页面没有可调取的图片。";
+      return list
+        .map((im) => `[${im.index}] ${im.alt || "（无描述）"} — ${im.w}×${im.h} — ${truncate(im.src, 120)}`)
+        .join("\n");
+    }
+    case "send_page_image": {
+      const want = String(args.url || "").trim();
+      if (args.index == null && !want) return "缺少参数：请提供 list_page_images 返回的图片序号 index，或图片 url。";
+      const r = await callTab(tabId, { type: "GET_IMAGE", index: args.index, url: want });
+      if (!r?.ok) return r?.error || "抓取页面图片失败";
+      const label = r.alt || r.src;
+      // 带 images 的返回值由工具循环特殊处理：图片会注入对话，模型与用户都能看到
+      return {
+        text: `已将页面图片发送到对话中（${truncate(label, 120)}，原始尺寸 ${r.w}×${r.h}）。图片内容见随后的图片消息，请直接看图作答。`,
+        images: [r.dataUrl],
+        label
+      };
+    }
     case "web_search": {
       const results = await webSearch(args.query || "");
       if (!results.length) return "没有搜索结果";
@@ -511,7 +614,7 @@ function toolNamesFor(settings, skills = []) {
   const allows = (tool, fallback) => hasSkills ? skills.some((skill) => skill?.tools?.[tool]) : fallback;
   const names = [];
   const read = allows("readPage", settings.readPageByDefault);
-  if (read) names.push("read_page", "list_tabs", "extract_links", "search_page");
+  if (read) names.push("read_page", "list_tabs", "extract_links", "search_page", "list_page_images", "send_page_image");
   const canSearchWeb = settings.webSearchEnabled !== false && allows("webSearch", true);
   if (canSearchWeb) names.push("web_search", "read_search_result");
   if (settings.browserControl && allows("browser", settings.browserControl)) {
@@ -542,13 +645,11 @@ function waitPermission(port, call) {
 
 async function collectContext(tabId, extraTabIds = [], cache) {
   const blocks = [];
-  const images = [];
   let remaining = MAX_TOTAL_PAGE_CHARS;
   const ids = [...new Set([tabId, ...extraTabIds].filter(Boolean))];
   for (const id of ids) {
     const page = await callTab(id, {
       type: "EXTRACT_PAGE",
-      withImages: true,
       start: 0,
       maxLength: MAX_INITIAL_PAGE_CHARS
     });
@@ -559,18 +660,16 @@ async function collectContext(tabId, extraTabIds = [], cache) {
       const url = page.url || "";
       const info = page.contentInfo || {};
       let block = `### ${title}\nURL: ${url}\n[页面预览：${info.startPosition ?? 0}-${info.endPosition ?? String(page.text || "").length} / ${info.totalLength ?? String(page.text || "").length}；${info.hasMore ? `还有后续内容，下一段 start=${info.nextStart}` : "已是全文"}]\n\n${truncate(page.text || "", Math.max(0, budget - title.length - url.length - 100))}`;
-      if (page.images?.length) {
-        const names = page.images.map((im) => im.alt || im.src).join("；");
-        block += `\n\n（本页另有 ${page.images.length} 张图片附在用户消息里：${truncate(names, 300)}）`;
-        for (const im of page.images) {
-          if (images.length < 6) images.push(im.dataUrl);
-        }
+      // 页面图片默认不随消息发送（省 token），只告知有哪些图，模型按需用工具调取
+      if (page.imageList?.length) {
+        const names = page.imageList.map((im) => im.alt || im.src).join("；");
+        block += `\n\n（本页还有 ${page.imageList.length} 张图片，未随消息发送：${truncate(names, 300)}）`;
       }
-      blocks.push(block);
+      blocks.push({ key: page.url || page.title || "", text: block });
       remaining -= block.length;
     }
   }
-  return { text: blocks.join("\n\n"), images };
+  return { blocks };
 }
 
 async function handleChat(port, req) {
@@ -645,10 +744,12 @@ async function handleChat(port, req) {
   const toolNames = toolNamesFor(settings, skills);
   if (includePage && tab?.id) {
     const ctx = await collectContext(tab.id, req.extraTabIds || [], toolCache);
-    if (ctx.text) userText += `\n\n---\n当前页面上下文：\n${ctx.text}`;
-    if (ctx.images.length) {
-      images.push(...ctx.images.slice(0, Math.max(0, 8 - images.length)));
-      userText += `\n\n（随此消息附上 ${ctx.images.length} 张来自页面的图片，请直接看图作答。）`;
+    // 每个页面在会话里只附一次：历史消息里已含该 URL 的上下文块则跳过，
+    // 页面有更新时模型可自行调 read_page 重读
+    const prior = conv.messages.map((m) => m.content || "").join("\n");
+    const fresh = ctx.blocks.filter((b) => !b.key || !prior.includes(`URL: ${b.key}`));
+    if (fresh.length) {
+      userText += `\n\n---\n当前页面上下文（每个页面只在首次进入对话时附带一次，后续提问不再重复）：\n${fresh.map((b) => b.text).join("\n\n")}`;
     }
   }
   if (req.selection) {
@@ -670,17 +771,22 @@ async function handleChat(port, req) {
     if (item.instructions) systemParts.push(`技能「${item.name}」说明：\n${item.instructions}`);
   });
   if (includePage) {
-    systemParts.push(`当前用户消息里只有当前页面的首段预览，不是全文。若问题涉及全文、文献、事件经过或预览中未出现的内容，必须调用 read_page；根据结果中的‘下一段 start’连续读取后续分段，直到‘还有后续内容：否’或已有足够证据。不要重复读取相同 start。只可调用以下工具：${toolNames.join("、")}。不要拼接或重复工具名。`);
+    systemParts.push(`页面上下文规则：每个页面只在首次进入对话时附带一次首段预览（不是全文），之后的提问不会重复附带；预览可能在本轮用户消息里，也可能在更早的消息里。若问题涉及全文、文献、事件经过或预览中未出现的内容，或页面可能已更新，必须调用 read_page 重新读取；根据结果中的‘下一段 start’连续读取后续分段，直到‘还有后续内容：否’或已有足够证据。不要重复读取相同 start。只可调用以下工具：${toolNames.join("、")}。不要拼接或重复工具名。`);
   }
   if (toolNames.includes("read_search_result")) {
     systemParts.push("联网检索后，如需依据某个结果页回答，应调用 read_search_result 并传入 web_search 返回的 URL；它会直接返回网页正文，不要为读取内容而调用 open_tab。若结果有后续内容，使用其 nextStart 继续读取。");
+  }
+  if (toolNames.includes("send_page_image")) {
+    systemParts.push("页面图片：默认不随用户消息发送，页面上下文里只列出了图片的名称/URL。若问题涉及页面上的图片、或需要向用户展示某张图片，先调用 list_page_images 获取图片列表（序号、描述、尺寸），再调用 send_page_image 传入序号或图片 URL；发送后图片会出现在对话中，你也能直接看到图片内容。");
   }
   const llmMessages = [
     { role: "system", content: systemParts.filter(Boolean).join("\n\n") },
     ...conv.messages.map((m) => ({
       role: m.role,
       content: m.content,
-      images: m.images,
+      // fromTool 图片只在注入的那一轮请求里可见（roundMessages 直传），
+      // 后续轮次从模型输入剔除以省 token；用户手动附件保持每轮可见
+      images: m.fromTool ? undefined : m.images,
       toolCalls: m.toolCalls,
       toolCallId: m.toolCallId,
       name: m.name,
@@ -785,15 +891,18 @@ async function handleChat(port, req) {
           result = `工具失败: ${e.message}`;
         }
         resultCache.set(cacheKey, result);
-        if (!String(result).startsWith("未知工具") && !String(result).startsWith("已拒绝") && !String(result).startsWith("无法")) allFailed = false;
-        if (String(result).startsWith("未知工具")) failedTools.add(call.name);
+        // runTool 可能返回 { text, images, label }（如 send_page_image），统一归一化
+        const resObj = typeof result === "string" ? { text: result } : result || { text: "" };
+        const resText = String(resObj.text ?? "");
+        if (!resText.startsWith("未知工具") && !resText.startsWith("已拒绝") && !resText.startsWith("无法")) allFailed = false;
+        if (resText.startsWith("未知工具")) failedTools.add(call.name);
         send(port, {
           type: "tool",
           id: call.id,
           name: call.name,
           args: call.arguments,
           status: "done",
-          result,
+          result: resText,
           cached
         });
         const toolMsg = {
@@ -801,11 +910,28 @@ async function handleChat(port, req) {
           role: "tool",
           name: call.name,
           toolCallId: call.id,
-          content: String(result),
+          content: resText,
           createdAt: Date.now()
         };
         conv.messages.push(toolMsg);
         roundMessages.push(toolMsg);
+        if (resObj.images?.length) {
+          // 图片以 user 消息注入：三家 provider 都已支持 user 多模态输入，
+          // 模型本轮及后续轮次都能看到图；UI 按 fromTool 渲染为图片卡片
+          const imgMsg = {
+            id: uid("msg"),
+            role: "user",
+            content: `（系统注入：这是模型调用 ${call.name} 发送的页面图片${resObj.label ? `：${resObj.label}` : ""}。）`,
+            // display 供导出使用（UI 对 fromTool 消息渲染图片卡片，不读 display）
+            display: `（模型发送的页面图片${resObj.label ? `：${resObj.label}` : ""}）`,
+            images: resObj.images,
+            fromTool: call.name,
+            createdAt: Date.now()
+          };
+          conv.messages.push(imgMsg);
+          roundMessages.push(imgMsg);
+          send(port, { type: "toolimg", id: imgMsg.id, images: resObj.images });
+        }
       }
       full = "";
       if (allFailed) {

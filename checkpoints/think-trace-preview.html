@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light" style="font-size: 14px">
+  <head>
+    <meta charset="UTF-8" />
+    <title>思考样式预览</title>
+    <link rel="stylesheet" href="../sidepanel/sidepanel.css" />
+    <style>body { width: 380px; margin: 0 auto; border-left: 1px solid #eee; border-right: 1px solid #eee; }</style>
+  </head>
+  <body>
+    <div class="messages">
+      <article class="msg user">
+        <div class="user-bubble">
+          <div class="who">你</div>
+          <div class="body">涉及哪些物种</div>
+        </div>
+      </article>
+
+      <details class="trace">
+        <summary>思考</summary>
+        <article class="msg think">
+          <div class="who">思考</div>
+          <div class="body">用户在问麦夸里岛海洋公园涉及哪些物种。需要结合刚才读取的 CNN 报道内容回答，重点列出文中明确提到的物种，不要编造。</div>
+        </article>
+      </details>
+
+      <details class="trace" open>
+        <summary>思考</summary>
+        <article class="msg think">
+          <div class="who">思考</div>
+          <div class="body">用户在问麦夸里岛海洋公园涉及哪些物种。需要结合刚才读取的 CNN 报道内容回答，重点列出文中明确提到的物种，不要编造。<br>报道中提到的关键信息包括：企鹅、海豹、鲸鱼等海洋动物，以及保护区内的海鸟栖息地。回答时用列表形式，按类别归纳。</div>
+        </article>
+      </details>
+
+      <article class="msg assistant">
+        <div class="who">Skilldock</div>
+        <div class="body">根据 CNN 这篇报道，麦夸里岛海洋公园涉及的物种主要有以下几类：</div>
+      </article>
+    </div>
+  </body>
+</html>

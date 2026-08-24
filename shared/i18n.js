@@ -7,13 +7,12 @@ const COPY = {
     "跟随系统": "System", "深色": "Dark", "浅色": "Light", "语言": "Language", "界面显示语言": "Interface display language", "中文": "Chinese",
     "字号": "Font size", "调整设置页与侧边栏里的文字大小": "Adjust text size in settings and the side panel.",
     "功能与权限": "Features & permissions", "划词工具条": "Selection toolbar", "选中网页文字后浮出快捷操作。需要读取页面内容才能工作。": "Show quick actions when you select page text. Requires access to page content.",
-    "输入框蓝点": "Writing assistant", "网页文本框聚焦时，在输入框边缘浮出写作助手入口（润色、续写、翻译）。": "Show writing actions (rewrite, continue, translate) beside focused text fields.",
     "快捷问（Alt+Q）": "Quick chat (Alt+Q)", "在任意页面用快捷键唤起侧边栏提问。": "Open the side panel from any page with a shortcut.",
     "允许浏览器操作": "Allow browser control", "允许 AI 点击、填写、滚动网页。敏感操作前会再次征求你的同意，请留意确认弹窗。": "Allow AI to click, fill, and scroll pages. Sensitive actions always require your approval.",
     "允许联网搜索": "Allow web search", "允许 AI 通过 DuckDuckGo 搜索公开网页。关闭后，所有技能都不能使用网络搜索。": "Allow AI to search the public web through DuckDuckGo. When off, no skill can use web search.",
     "默认附带当前页内容": "Include current page by default", "每次提问自动读取当前标签页正文。页面内容会随请求发送给你配置的模型服务商。": "Read the current tab with every question. Its content is sent to your configured model provider.",
     "默认开启思考模式": "Enable thinking by default", "仅对支持推理的模型生效，可能增加响应耗时与 token 费用。": "Only applies to reasoning-capable models and may increase latency and token costs.",
-    "高级": "Advanced", "禁用站点": "Disabled sites", "每行一个域名，这些站点上不显示划词工具条和输入框蓝点": "One domain per line. The selection toolbar and writing assistant are hidden on these sites.",
+    "高级": "Advanced", "禁用站点": "Disabled sites", "每行一个域名，这些站点上不显示划词工具条": "One domain per line. The selection toolbar is hidden on these sites.",
     "系统提示词": "System prompt", "附加在每次对话开头的全局指令": "Global instruction prepended to every conversation.",
     "添加 OpenAI 兼容接口": "Add an OpenAI-compatible provider", "名称": "Name", "多个模型用逗号分隔": "Separate models with commas", "可留空": "Optional", "添加": "Add",
     "技能完全本地，可自由创建和编辑，点击卡片即可修改。输入框里用 / 调用。": "Skills are entirely local. Create them freely and click a card to edit; invoke them with / in the composer.",
@@ -27,7 +26,8 @@ const COPY = {
     "今天想做什么？": "What would you like to do today?", "直接提问，或选择一个技能开始。你的密钥和对话只保存在本机。": "Ask directly, or choose a skill to get started. Your keys and chats stay on this device.",
     "暂无模型，请在设置中添加或拉取": "No models yet. Add or fetch them in Settings.", "不使用技能": "No skill", "直接与模型对话": "Chat with the model directly", "你": "You", "助手": "Assistant", "工具": "Tool", "已复制": "Copied", "复制": "Copy", "复制失败": "Copy failed", "编辑": "Edit", "重生成": "Regenerate", "导出此回答为 Markdown": "Export this answer as Markdown", "正在编辑上一条消息": "Editing the previous message", "对话": "Chat", "未命名": "Untitled", "导出": "Export", "导出格式": "Export format", "导出为 TXT": "Export as TXT", "导出为 Markdown": "Export as Markdown", "导出为 PDF": "Export as PDF", "删除": "Delete", "还没有对话": "No conversations yet", "回到顶部": "Back to top", "过程": "Process",
     "拉取模型列表": "Fetch model list", "拉取中…": "Fetching…", "快捷": "Quick", "已禁用": "Disabled", "编辑技能": "Edit skill", "启用技能": "Enable skill", "禁用技能": "Disable skill", "启用": "Enable", "禁用": "Disable", "删除技能": "Delete skill", "还没有技能": "No skills yet", "更新技能": "Update skill", "导入完成": "Import complete",
-    "斜杠命令": "Slash command", "简介": "Description", "如 DeepSeek": "e.g. DeepSeek", "例如：总结当前页": "e.g. Summarize this page", "例如：summarize": "e.g. summarize", "一句话说明技能用途": "Describe the skill in one sentence", "描述技能应该如何工作": "Describe how the skill should work", "敏捷的棕色狐狸跳过懒狗。The quick brown fox jumps over the lazy dog.": "The quick brown fox jumps over the lazy dog.", "把当前网页正文附加到问题": "Attach the current page text to your question", "让支持的模型先输出推理过程再作答": "Ask supported models to reason before answering", "切换模型": "Switch model", "选择要附加的标签页": "Choose tabs to attach", "没有可添加的其它标签页": "No other tabs can be added"
+    "斜杠命令": "Slash command", "简介": "Description", "如 DeepSeek": "e.g. DeepSeek", "例如：总结当前页": "e.g. Summarize this page", "例如：summarize": "e.g. summarize", "一句话说明技能用途": "Describe the skill in one sentence", "描述技能应该如何工作": "Describe how the skill should work", "敏捷的棕色狐狸跳过懒狗。The quick brown fox jumps over the lazy dog.": "The quick brown fox jumps over the lazy dog.", "把当前网页正文附加到问题": "Attach the current page text to your question", "让支持的模型先输出推理过程再作答": "Ask supported models to reason before answering", "切换模型": "Switch model", "选择要附加的标签页": "Choose tabs to attach", "没有可添加的其它标签页": "No other tabs can be added",
+    "模型发送的页面图片": "Page image sent by the model"
   }
 };
 

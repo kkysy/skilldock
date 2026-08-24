@@ -146,7 +146,6 @@ export function emptyState() {
       language: "zh-CN",
       selectionToolbar: true,
       quickChat: true,
-      inputDot: true,
       browserControl: true,
       webSearchEnabled: true,
       readPageByDefault: true,

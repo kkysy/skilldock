@@ -120,6 +120,28 @@ export const TOOL_DEFS = [
       },
       required: ["url"]
     }
+  },
+  {
+    name: "list_page_images",
+    description: "List the images on the current (or specified) tab that can be sent to the chat: index, alt text, dimensions, and URL. Call this before send_page_image when you do not know which images the page has.",
+    parameters: {
+      type: "object",
+      properties: {
+        tabId: { type: "number", description: "Optional Chrome tab id. Defaults to the active tab." }
+      }
+    }
+  },
+  {
+    name: "send_page_image",
+    description: "Send one image from the current page into the chat so the user can see it; the image is also provided to you as visual input right after the tool result, so you can look at it and answer. Provide either the index from list_page_images or the image URL.",
+    parameters: {
+      type: "object",
+      properties: {
+        tabId: { type: "number", description: "Optional Chrome tab id. Defaults to the active tab." },
+        index: { type: "integer", description: "Image index from list_page_images." },
+        url: { type: "string", description: "Image URL as listed by list_page_images. Used when index is omitted." }
+      }
+    }
   }
 ];
 
@@ -328,11 +350,20 @@ async function* streamAnthropic({ provider, model, messages, toolNames, thinking
     }
     converted.push({ role: m.role, content: m.content || "" });
   }
+  // Anthropic 要求 user/assistant 严格交替：tool_result 和工具注入的图片消息都是 user 角色，
+  // 连续的同角色消息必须合并成一条，content 统一为 block 数组
+  const merged = [];
+  for (const m of converted) {
+    const parts = Array.isArray(m.content) ? m.content : [{ type: "text", text: m.content || "" }];
+    const last = merged[merged.length - 1];
+    if (last && last.role === m.role) last.content.push(...parts);
+    else merged.push({ role: m.role, content: [...parts] });
+  }
   const body = {
     model,
     max_tokens: thinking ? 8192 : 4096,
     stream: true,
-    messages: converted
+    messages: merged
   };
   if (system) body.system = system;
   if (thinking) body.thinking = { type: "enabled", budget_tokens: 4000 };
@@ -413,7 +444,15 @@ function toGeminiContents(messages) {
     }
     contents.push({ role: m.role === "assistant" ? "model" : "user", parts });
   }
-  return contents;
+  // Gemini 多轮请求要求 user/model 交替：functionResponse 与工具注入的图片消息同为 user，
+  // 连续同角色条目合并为一条
+  const merged = [];
+  for (const c of contents) {
+    const last = merged[merged.length - 1];
+    if (last && last.role === c.role) last.parts.push(...c.parts);
+    else merged.push({ role: c.role, parts: [...c.parts] });
+  }
+  return merged;
 }
 
 async function* streamGemini({ provider, model, messages, toolNames, thinking, signal }) {

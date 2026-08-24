@@ -4,12 +4,9 @@
   window.__skilldockContent = true;
 
   const ROOT_ID = "skilldock-root";
-  let settings = { selectionToolbar: true, quickChat: true, inputDot: true, disabledSites: [] };
+  let settings = { selectionToolbar: true, quickChat: true, disabledSites: [] };
   let toolbar;
   let quick;
-  let dot;
-  let dotMenu;
-  let dotTarget = null;
   let selectedText = "";
   const english = () => settings.language === "en";
   const ui = (zh, en) => english() ? en : zh;
@@ -55,9 +52,9 @@
     return url.length <= 1200000 ? url : null;
   }
 
-  async function grabPageImages(limit = 4) {
+  function pageImageCandidates(limit = 20) {
     const seen = new Set();
-    const cands = [...document.images]
+    return [...document.images]
       .map((im) => ({
         src: im.currentSrc || im.src,
         alt: (im.alt || "").trim().slice(0, 120),
@@ -66,9 +63,13 @@
       }))
       .filter((c) => c.w >= 200 && c.h >= 150 && /^https?:/.test(c.src) && !seen.has(c.src) && seen.add(c.src))
       .sort((a, b) => b.w * b.h - a.w * a.h)
-      .slice(0, limit);
+      .slice(0, limit)
+      .map((c, i) => ({ index: i, ...c }));
+  }
+
+  async function grabPageImages(limit = 4) {
     const out = [];
-    for (const c of cands) {
+    for (const c of pageImageCandidates(limit)) {
       try {
         const dataUrl = await imgToJpeg(c.src);
         if (dataUrl) out.push({ src: c.src, alt: c.alt, dataUrl });
@@ -77,6 +78,24 @@
       }
     }
     return out;
+  }
+
+  function listPageImages() {
+    return { ok: true, images: pageImageCandidates(20) };
+  }
+
+  async function getPageImage(index, url) {
+    const cands = pageImageCandidates(50);
+    const want = String(url || "").trim();
+    const cand = want ? cands.find((c) => c.src === want) : cands[Number(index) || 0];
+    if (!cand) return { ok: false, error: want ? "页面上找不到这张图片。" : "页面上没有这个序号的图片，请先列出页面图片。" };
+    try {
+      const dataUrl = await imgToJpeg(cand.src);
+      if (!dataUrl) return { ok: false, error: "图片无法读取或体积过大。" };
+      return { ok: true, dataUrl, src: cand.src, alt: cand.alt, w: cand.w, h: cand.h };
+    } catch (err) {
+      return { ok: false, error: `图片抓取失败：${err.message}` };
+    }
   }
 
   function readableRoot() {
@@ -122,6 +141,8 @@
       }
     };
     if (withImages) page.images = await grabPageImages(4);
+    // 图片元数据（不含字节流）随手附上，供背景页告知模型本页有哪些图可按需调取
+    page.imageList = pageImageCandidates(10);
     return page;
   }
 
@@ -214,122 +235,11 @@
 
   async function runAction(action, text) {
     hideToolbar();
-    hideDot();
     await chrome.runtime.sendMessage({ type: "OPEN_SIDEPANEL" });
     setTimeout(() => {
       chrome.runtime.sendMessage({ type: "CONTEXT_ACTION", action, text }).catch(() => {});
     }, 200);
   }
-
-  // ---- 输入框蓝点：文本框聚焦时浮出写作工具入口 ----
-  function isTextField(el) {
-    if (!el || !el.closest || el.closest(`#${ROOT_ID}`)) return false;
-    if (el.isContentEditable) return true;
-    if (el.tagName === "TEXTAREA") return true;
-    if (el.tagName === "INPUT") {
-      return ["text", "search", "email", "url", "tel"].includes((el.type || "text").toLowerCase());
-    }
-    return false;
-  }
-
-  function fieldText(el) {
-    if (!el) return "";
-    return ("value" in el ? el.value : el.innerText) || "";
-  }
-
-  function placeDot() {
-    if (!dot || !dotTarget || !document.contains(dotTarget)) return;
-    const r = dotTarget.getBoundingClientRect();
-    if (r.width < 60 || r.height < 16 || r.bottom < 0 || r.top > window.innerHeight) {
-      hideDot();
-      return;
-    }
-    dot.style.left = `${Math.min(window.innerWidth - 30, Math.max(4, r.right - 30))}px`;
-    dot.style.top = `${Math.min(window.innerHeight - 30, Math.max(4, r.top + r.height / 2 - 11))}px`;
-  }
-
-  function hideDot() {
-    if (dot) dot.style.display = "none";
-    if (dotMenu) dotMenu.style.display = "none";
-    dotTarget = null;
-  }
-
-  function showDot(target) {
-    if (settings.inputDot === false || disabled()) return;
-    const root = ensureRoot();
-    if (!dot) {
-      dot = document.createElement("button");
-      dot.className = "sd-dot";
-      dot.type = "button";
-      dot.title = ui("Skilldock 写作助手", "Skilldock writing assistant");
-      dot.setAttribute("aria-label", dot.title);
-      dot.innerHTML = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19l7-7a2.1 2.1 0 0 0-3-3l-7 7-1 4 4-1z"/><path d="M16 8l2 2"/></svg>`;
-      // 保持焦点留在输入框里
-      dot.addEventListener("mousedown", (e) => e.preventDefault());
-      dot.addEventListener("click", () => toggleDotMenu());
-      root.appendChild(dot);
-    }
-    dotTarget = target;
-    if (dotMenu) dotMenu.style.display = "none";
-    dot.style.display = "flex";
-    placeDot();
-  }
-
-  function toggleDotMenu() {
-    if (!dotTarget) return;
-    const root = ensureRoot();
-    if (!dotMenu) {
-      dotMenu = document.createElement("div");
-      dotMenu.className = "sd-dot-menu";
-      const actions = [
-        [ui("润色这段文字", "Rewrite this text"), "rewrite"],
-        [ui("接着续写", "Continue writing"), "continue"],
-        [ui("精简缩写", "Shorten"), "shorten"],
-        [ui("翻译", "Translate"), "translate"],
-        [ui("问 AI", "Ask AI"), "ask"]
-      ];
-      for (const [label, action] of actions) {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.textContent = label;
-        b.addEventListener("mousedown", (e) => e.preventDefault());
-        b.addEventListener("click", () => {
-          const text = fieldText(dotTarget).trim();
-          if (action === "continue") {
-            runAction("ask", text ? ui(`请接着下面的文字续写，保持语气与风格一致：\n${text}`, `Continue the text below while matching its tone and style:\n${text}`) : ui("请帮我续写这段文字。", "Please continue this text."));
-          } else if (action === "ask" && !text) {
-            runAction("ask", "");
-          } else {
-            runAction(action, text);
-          }
-        });
-        dotMenu.appendChild(b);
-      }
-      root.appendChild(dotMenu);
-    }
-    const show = dotMenu.style.display !== "flex";
-    dotMenu.style.display = show ? "flex" : "none";
-    if (show) {
-      const r = dot.getBoundingClientRect();
-      dotMenu.style.left = `${Math.max(4, Math.min(window.innerWidth - 160, r.right - 150))}px`;
-      dotMenu.style.top = `${Math.min(window.innerHeight - 150, r.bottom + 6)}px`;
-    }
-  }
-
-  document.addEventListener("focusin", (e) => {
-    if (disabled()) return;
-    if (isTextField(e.target)) showDot(e.target);
-    else if (dot && e.target !== dot && !dotMenu?.contains(e.target)) hideDot();
-  });
-  document.addEventListener("focusout", (e) => {
-    if (e.target !== dotTarget) return;
-    // 蓝点/菜单用 mousedown preventDefault，不会抢走焦点；到这里说明焦点真的离开了
-    setTimeout(() => {
-      if (dotTarget === e.target && document.activeElement !== e.target) hideDot();
-    }, 120);
-  });
-  window.addEventListener("scroll", () => { if (dotTarget) placeDot(); }, { capture: true, passive: true });
-  window.addEventListener("resize", () => { if (dotTarget) placeDot(); }, { passive: true });
 
   function toggleQuick(force) {
     if (!settings.quickChat || disabled()) return;
@@ -365,14 +275,10 @@
   });
   document.addEventListener("mousedown", (e) => {
     if (toolbar && !toolbar.contains(e.target)) hideToolbar();
-    if (dotMenu && dotMenu.style.display === "flex" && !dotMenu.contains(e.target) && e.target !== dot) {
-      dotMenu.style.display = "none";
-    }
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       hideToolbar();
-      hideDot();
       if (quick) quick.classList.add("hidden");
     }
   });
@@ -384,6 +290,11 @@
         return true;
       }
       if (msg.type === "EXTRACT_LINKS") return sendResponse(extractLinks());
+      if (msg.type === "LIST_IMAGES") return sendResponse(listPageImages());
+      if (msg.type === "GET_IMAGE") {
+        getPageImage(msg.index, msg.url).then(sendResponse, (err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+      }
       if (msg.type === "SEARCH_PAGE") return sendResponse(searchPage(msg.query));
       if (msg.type === "CLICK") return sendResponse(clickSel(msg.selector));
       if (msg.type === "FILL") return sendResponse(fillSel(msg.selector, msg.value));
@@ -408,8 +319,8 @@
     const languageChanged = next.language !== settings.language;
     settings = { ...settings, ...next };
     if (languageChanged) {
-      toolbar?.remove(); quick?.remove(); dot?.remove(); dotMenu?.remove();
-      toolbar = quick = dot = dotMenu = null;
+      toolbar?.remove(); quick?.remove();
+      toolbar = quick = null;
     }
   });
 })();
