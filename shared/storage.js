@@ -227,6 +227,7 @@ export function newConversation(partial = {}) {
     providerId: partial.providerId || null,
     model: partial.model || null,
     skillId: partial.skillId || null,
+    skillIds: Array.isArray(partial.skillIds) ? partial.skillIds : (partial.skillId ? [partial.skillId] : []),
     messages: partial.messages || []
   };
 }
@@ -266,6 +267,7 @@ export function exportBundle(state) {
     providerId: conv.providerId,
     model: conv.model,
     skillId: conv.skillId,
+    skillIds: conv.skillIds || (conv.skillId ? [conv.skillId] : []),
     messages: (conv.messages || []).flatMap((message) => {
       if (message.role === "user") {
         return [{

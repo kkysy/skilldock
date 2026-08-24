@@ -20,6 +20,10 @@ const ICONS = {
   edit: `<svg ${SVG_ATTRS}><path d="m4 16.5-.7 3.7 3.7-.7L18.6 7.9a2.5 2.5 0 0 0-3.5-3.5L4 16.5Z" /><path d="m13.8 6.2 4 4" /></svg>`,
   refresh: `<svg ${SVG_ATTRS}><path d="M20 11a8 8 0 1 0-2.2 6.2" /><path d="M20 5v6h-6" /></svg>`,
   export: `<svg ${SVG_ATTRS}><path d="M12 4v11" /><path d="M7 11l5 5 5-5" /><path d="M4 20h16" /></svg>`,
+  text: `<svg ${SVG_ATTRS}><path d="M6 3.5h9l3 3V20.5H6z" /><path d="M9 11h6M9 15h6M9 7h2" /></svg>`,
+  markdown: `<svg ${SVG_ATTRS}><path d="M5 5h14v14H5z" /><path d="m8 15 2-6 2 4 2-4 2 6M8 18h8" /></svg>`,
+  pdf: `<svg ${SVG_ATTRS}><path d="M6 3.5h9l3 3V20.5H6z" /><path d="M9 15h6M10 11h2a1.5 1.5 0 0 0 0-3H10zM14.5 8v4" /></svg>`,
+  trash: `<svg ${SVG_ATTRS}><path d="M5 7h14M10 11v6M14 11v6M6.5 7l.8 13h9.4l.8-13M9 7V4h6v3" /></svg>`,
   toTop: `<svg ${SVG_ATTRS}><path d="M12 19V5" /><path d="M5 12l7-7 7 7" /></svg>`
 };
 const els = {
@@ -32,6 +36,7 @@ const els = {
   skill: $("skill"),
   btnSkillContext: $("btnSkillContext"),
   skillContextLabel: $("skillContextLabel"),
+  skillTags: $("skillTags"),
   skillPicker: $("skillPicker"),
   messages: $("messages"),
   input: $("input"),
@@ -59,6 +64,8 @@ let attachments = [];
 let pendingPerm = null;
 let activeId = null;
 let editingMessageId = null;
+let selectedSkillIds = [];
+let historyExportId = null;
 const popupTimers = new WeakMap();
 
 function language() {
@@ -119,18 +126,32 @@ function updateModelPicker() {
   els.btnModel.title = language() === "en" ? `Current model: ${current}. Click to switch.` : `当前模型：${current}。点击切换`;
   const providerId = els.provider.value;
   els.modelPickerBody.innerHTML = state.providers
-    .map((p) => {
-      const models = p.models?.length ? p.models : (p.id === providerId ? [els.model.value || state.settings.model] : []);
-      if (!models.length) return `<section class="provider-section"><span class="provider-name">${escapeAttr(p.name)}</span><div class="model-empty">${t("暂无模型，请在设置中添加或拉取", language())}</div></section>`;
-      return `<section class="provider-section">
-        <span class="provider-name">${escapeAttr(p.name)}</span>
-        ${models.map((m) => `<button class="model-option ${p.id === providerId && m === els.model.value ? "selected" : ""}" type="button" data-provider="${escapeAttr(p.id)}" data-model="${escapeAttr(m)}"><span>${escapeAttr(m)}</span><span class="model-check">✓</span></button>`).join("")}
-      </section>`;
-    })
+    .map((p) => `<button class="provider-option ${p.id === providerId ? "selected" : ""}" type="button" data-provider="${escapeAttr(p.id)}">
+      <span>${escapeAttr(p.name)}</span><span class="provider-option-meta">${p.id === providerId ? "✓" : ""}<span class="option-chevron">›</span></span>
+    </button>`)
     .join("");
-  els.modelPickerBody.querySelectorAll(".model-option").forEach((button) => {
+  els.modelPickerBody.querySelectorAll(".provider-option").forEach((button) => {
+    button.addEventListener("click", () => openProviderModels(button.dataset.provider));
+    button.addEventListener("mouseenter", () => openProviderModels(button.dataset.provider));
+  });
+}
+
+function openProviderModels(providerId) {
+  const provider = findProvider(state, providerId);
+  if (!provider) return;
+  const providerButton = els.modelPickerBody.querySelector(`.provider-option[data-provider="${CSS.escape(providerId)}"]`);
+  const models = provider.models?.length ? provider.models : (provider.id === els.provider.value ? [els.model.value || state.settings.model].filter(Boolean) : []);
+  els.modelPicker.querySelector(".model-submenu")?.remove();
+  const submenu = document.createElement("div");
+  submenu.className = "model-submenu";
+  submenu.dataset.provider = providerId;
+  submenu.innerHTML = `<div class="model-submenu-head"><span>${escapeAttr(provider.name)}</span><button type="button" aria-label="返回提供商列表">‹</button></div>${models.length
+    ? models.map((m) => `<button class="model-option ${provider.id === els.provider.value && m === els.model.value ? "selected" : ""}" type="button" data-model="${escapeAttr(m)}"><span>${escapeAttr(m)}</span><span class="model-check">✓</span></button>`).join("")
+    : `<div class="model-empty">${t("暂无模型，请在设置中添加或拉取", language())}</div>`}`;
+  submenu.querySelector(".model-submenu-head button").addEventListener("click", () => submenu.remove());
+  submenu.querySelectorAll(".model-option").forEach((button) => {
     button.addEventListener("click", async () => {
-      els.provider.value = button.dataset.provider;
+      els.provider.value = provider.id;
       fillModels();
       els.model.value = button.dataset.model;
       updateModelPicker();
@@ -138,48 +159,108 @@ function updateModelPicker() {
       closeModelPicker();
     });
   });
+  els.modelPicker.appendChild(submenu);
+  if (providerButton) {
+    const providerRect = providerButton.getBoundingClientRect();
+    const pickerRect = els.modelPicker.getBoundingClientRect();
+    const margin = 12;
+    const minHeight = 148;
+    const preferredTop = providerRect.top;
+    const top = Math.max(margin, Math.min(preferredTop, window.innerHeight - margin - minHeight));
+    const maxHeight = Math.max(minHeight, Math.min(320, window.innerHeight - top - margin));
+    submenu.style.top = `${Math.round(top - pickerRect.top)}px`;
+    submenu.style.maxHeight = `${Math.round(maxHeight)}px`;
+  }
 }
 
 function openModelPicker() {
   updateModelPicker();
+  positionModelMenus();
   showPopup(els.modelPicker);
   els.btnModel.setAttribute("aria-expanded", "true");
 }
 
+function positionModelMenus() {
+  const trigger = els.btnModel.getBoundingClientRect();
+  const margin = 12;
+  const gap = 7;
+  const available = Math.max(360, window.innerWidth - margin * 2);
+  const providerWidth = Math.min(348, Math.max(210, Math.round(available * 0.54)));
+  const modelWidth = Math.max(170, available - providerWidth - gap);
+  const totalWidth = providerWidth + gap + modelWidth;
+  const left = Math.max(margin, Math.min(window.innerWidth - margin - totalWidth, trigger.right - providerWidth - 150));
+  els.modelPicker.style.setProperty("--provider-menu-width", `${providerWidth}px`);
+  els.modelPicker.style.setProperty("--model-menu-width", `${modelWidth}px`);
+  els.modelPicker.style.left = `${Math.round(left - trigger.left)}px`;
+  els.modelPicker.style.right = "auto";
+}
+
 function closeModelPicker() {
+  els.modelPicker.querySelector(".model-submenu")?.remove();
   hidePopup(els.modelPicker);
   els.btnModel.setAttribute("aria-expanded", "false");
 }
 
 function fillSkills() {
   const skills = (state.skills || []).filter((s) => s.enabled !== false);
+  selectedSkillIds = selectedSkillIds.filter((id) => skills.some((s) => s.id === id));
   els.skill.innerHTML =
     `<option value="">${t("不使用技能", language())}</option>` +
     skills.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
+  syncSkillSelect();
   renderSkillContext();
+}
+
+function selectedSkills() {
+  return selectedSkillIds
+    .map((id) => (state.skills || []).find((s) => s.id === id && s.enabled !== false))
+    .filter(Boolean);
+}
+
+function syncSkillSelect() {
+  els.skill.value = selectedSkillIds[0] || "";
 }
 
 function renderSkillContext() {
-  const active = (state.skills || []).find((s) => s.id === els.skill.value && s.enabled !== false);
-  els.skillContextLabel.textContent = active ? active.name : t("技能", language());
-  els.btnSkillContext.title = active ? (language() === "en" ? `Current skill: ${active.name}` : `当前技能：${active.name}`) : t("选择技能", language());
+  const active = selectedSkills();
+  els.skillContextLabel.textContent = active.length ? t("添加技能", language()) : t("技能", language());
+  els.btnSkillContext.title = active.length ? (language() === "en" ? "Add or remove skills" : "添加或移除技能") : t("选择技能", language());
+  els.skillTags.innerHTML = active.map((skill, i) => `<span class="skill-tag skill-tag-${i % 4}"><span>/${escapeAttr(skill.slash || skill.name)}</span><button type="button" data-remove-skill="${escapeAttr(skill.id)}" aria-label="移除 ${escapeAttr(skill.name)}">×</button></span>`).join("");
+  els.skillTags.querySelectorAll("[data-remove-skill]").forEach((button) => button.addEventListener("click", () => removeSkill(button.dataset.removeSkill)));
   const skills = (state.skills || []).filter((s) => s.enabled !== false);
   els.skillPicker.innerHTML = [
-    `<button class="skill-picker-option ${active ? "" : "selected"}" type="button" role="option" data-id=""><strong>/ ${t("不使用技能", language())}</strong><small>${t("直接与模型对话", language())}</small></button>`,
-    ...skills.map((s) => `<button class="skill-picker-option ${active?.id === s.id ? "selected" : ""}" type="button" role="option" data-id="${escapeAttr(s.id)}"><strong>/${escapeAttr(s.slash || s.name)}</strong><small>${escapeAttr(s.description || s.name)}</small></button>`)
+    `<button class="skill-picker-option ${active.length ? "" : "selected"}" type="button" role="option" data-id=""><strong>${t("清空技能", language())}</strong><small>${t("直接与模型对话", language())}</small></button>`,
+    ...skills.map((s) => `<button class="skill-picker-option ${selectedSkillIds.includes(s.id) ? "selected" : ""}" type="button" role="option" aria-selected="${selectedSkillIds.includes(s.id)}" data-id="${escapeAttr(s.id)}"><strong>/${escapeAttr(s.slash || s.name)}</strong><small>${escapeAttr(s.description || s.name)}</small><span class="skill-picker-check">✓</span></button>`)
   ].join("");
   els.skillPicker.querySelectorAll("[data-id]").forEach((button) => {
-    button.addEventListener("click", () => selectSkill(button.dataset.id));
+    button.addEventListener("click", () => toggleSkill(button.dataset.id));
   });
 }
 
-function selectSkill(id, { focus = true } = {}) {
-  els.skill.value = id || "";
-  const skill = (state.skills || []).find((s) => s.id === els.skill.value);
-  els.input.placeholder = skill ? (language() === "en" ? `Skill “${skill.name}” selected. Enter a message to send.` : `技能「${skill.name}」已选，输入内容后发送`) : t("随便问，/ 使用技能，可直接粘贴截图", language());
-  closeSkillPicker();
+function updateSkillsAfterSelection({ focus = true, close = false } = {}) {
+  syncSkillSelect();
   renderSkillContext();
+  if (close) closeSkillPicker();
   if (focus) els.input.focus();
+}
+
+function selectSkill(id, { focus = true, close = true } = {}) {
+  if (id && !selectedSkillIds.includes(id)) selectedSkillIds.push(id);
+  updateSkillsAfterSelection({ focus, close });
+}
+
+function toggleSkill(id) {
+  selectedSkillIds = id ? (selectedSkillIds.includes(id) ? selectedSkillIds.filter((item) => item !== id) : [...selectedSkillIds, id]) : [];
+  updateSkillsAfterSelection({ focus: false });
+}
+
+function removeSkill(id) {
+  selectedSkillIds = selectedSkillIds.filter((item) => item !== id);
+  updateSkillsAfterSelection();
+}
+
+function skillPayload() {
+  return { skillId: selectedSkillIds[0] || null, skillIds: [...selectedSkillIds] };
 }
 
 function openSkillPicker() {
@@ -223,8 +304,9 @@ function emptyView() {
   const quick = (state.skills || []).filter((s) => s.quick && s.enabled !== false);
   els.messages.innerHTML = `
     <div class="empty">
-      <h2>Skilldock</h2>
-      <p>${t("每个网页旁的本地助手。API Key 只存在你的电脑上，没有订阅，也没有广告。", language())}</p>
+      <div class="empty-mark" aria-hidden="true">✦</div>
+      <h2>${t("今天想做什么？", language())}</h2>
+      <p>${t("直接提问，或选择一个技能开始。你的密钥和对话只保存在本机。", language())}</p>
       <div class="quick-skills">
         ${quick.map((s) => `<button data-skill="${s.id}">${s.name}</button>`).join("")}
       </div>
@@ -409,7 +491,7 @@ async function regenerate(messageId) {
     conversationId: conv.id,
     providerId: els.provider.value,
     model: els.model.value,
-    skillId: els.skill.value || null,
+    ...skillPayload(),
     text: user.display || user.content,
     includePage: els.includePage.checked,
     thinking: els.thinking.checked,
@@ -446,6 +528,7 @@ async function forkFrom(msgId) {
     providerId: conv.providerId,
     model: conv.model,
     skillId: conv.skillId,
+    skillIds: conv.skillIds || (conv.skillId ? [conv.skillId] : []),
     messages: JSON.parse(JSON.stringify(conv.messages.slice(0, idx + 1)))
   });
   await upsertConversation(fork);
@@ -700,7 +783,7 @@ async function send() {
     editMessageId: editId,
     providerId: els.provider.value,
     model: els.model.value,
-    skillId: els.skill.value || null,
+    ...skillPayload(),
     text,
     includePage: els.includePage.checked,
     thinking: els.thinking.checked,
@@ -733,6 +816,26 @@ function exportMarkdown(id) {
   downloadText(`${safeFileName(conv.title)}.md`, conversationToMarkdown(conv));
 }
 
+function conversationToText(conv) {
+  const sections = [`${conv.title || t("对话", language())}`, ""];
+  for (const message of conv.messages || []) {
+    if (message.role === "system") continue;
+    if (message.role === "user") sections.push(`${t("你", language())}:`, message.display ?? message.content ?? "", "");
+    if (message.role === "assistant") {
+      if (message.thinking) sections.push(`${t("过程", language())}:`, message.thinking, "");
+      if (message.content) sections.push(`${t("助手", language())}:`, message.content, "");
+    }
+    if (message.role === "tool") sections.push(`${t("工具", language())} ${message.name || ""}:`, message.content || "", "");
+  }
+  return sections.join("\n");
+}
+
+function exportText(id) {
+  const conv = state.conversations.find((c) => c.id === id);
+  if (!conv) return;
+  downloadText(`${safeFileName(conv.title)}.txt`, conversationToText(conv), "text/plain");
+}
+
 function exportPdf(id) {
   chrome.tabs.create({ url: `${chrome.runtime.getURL("print/print.html")}?id=${id}` });
 }
@@ -744,41 +847,57 @@ function renderHistory() {
     .map(
       (c) => `<div class="hist" data-id="${c.id}">
         <div>${escapeAttr(c.title || t("未命名", language()))}</div>
-        <div class="meta">${new Date(c.updatedAt || c.createdAt).toLocaleString(language() === "en" ? "en" : "zh-CN")} <a data-md="${c.id}">${t("导出", language())}</a> <a data-pdf="${c.id}">PDF</a> <a data-del="${c.id}">${t("删除", language())}</a></div>
+        <div class="meta hist-meta"><span>${new Date(c.updatedAt || c.createdAt).toLocaleString(language() === "en" ? "en" : "zh-CN")}</span>
+          <div class="hist-actions">
+            <button class="hist-action" type="button" data-export="${c.id}" aria-expanded="${historyExportId === c.id}" title="${t("导出", language())}">${ICONS.export}<span>${t("导出", language())}</span></button>
+            <button class="hist-action hist-action-danger" type="button" data-del="${c.id}" title="${t("删除", language())}">${ICONS.trash}<span>${t("删除", language())}</span></button>
+          </div>
+        </div>
+        ${historyExportId === c.id ? `<div class="history-export-menu" role="group" aria-label="${t("导出格式", language())}">
+          <button type="button" data-export-format="txt" data-id="${c.id}" title="${t("导出为 TXT", language())}">${ICONS.text}<span>TXT</span></button>
+          <button type="button" data-export-format="md" data-id="${c.id}" title="${t("导出为 Markdown", language())}">${ICONS.markdown}<span>Markdown</span></button>
+          <button type="button" data-export-format="pdf" data-id="${c.id}" title="${t("导出为 PDF", language())}">${ICONS.pdf}<span>PDF</span></button>
+        </div>` : ""}
       </div>`
     )
     .join("") || `<div class="hist">${t("还没有对话", language())}</div>`;
   els.historyList.querySelectorAll(".hist[data-id]").forEach((el) => {
     el.addEventListener("click", (e) => {
-      if (e.target.closest("a")) return;
+      if (e.target.closest("button")) return;
       const conv = state.conversations.find((c) => c.id === el.dataset.id);
       activeId = conv.id;
       renderConv(conv);
       hidePopup(els.history);
     });
   });
-  els.historyList.querySelectorAll("[data-md]").forEach((a) => {
-    a.addEventListener("click", (e) => {
+  els.historyList.querySelectorAll("[data-export]").forEach((button) => {
+    button.addEventListener("click", (e) => {
       e.stopPropagation();
-      exportMarkdown(a.dataset.md);
+      historyExportId = historyExportId === button.dataset.export ? null : button.dataset.export;
+      renderHistory();
     });
   });
-  els.historyList.querySelectorAll("[data-pdf]").forEach((a) => {
-    a.addEventListener("click", (e) => {
+  els.historyList.querySelectorAll("[data-export-format]").forEach((button) => {
+    button.addEventListener("click", (e) => {
       e.stopPropagation();
-      exportPdf(a.dataset.pdf);
+      if (button.dataset.exportFormat === "txt") exportText(button.dataset.id);
+      if (button.dataset.exportFormat === "md") exportMarkdown(button.dataset.id);
+      if (button.dataset.exportFormat === "pdf") exportPdf(button.dataset.id);
+      historyExportId = null;
+      renderHistory();
     });
   });
-  els.historyList.querySelectorAll("[data-del]").forEach((a) => {
-    a.addEventListener("click", async (e) => {
+  els.historyList.querySelectorAll("[data-del]").forEach((button) => {
+    button.addEventListener("click", async (e) => {
       e.stopPropagation();
-      await deleteConversation(a.dataset.del);
+      await deleteConversation(button.dataset.del);
       state = await loadState();
-      if (activeId === a.dataset.del) {
+      if (activeId === button.dataset.del) {
         activeId = state.activeConversationId;
         const conv = state.conversations.find((c) => c.id === activeId);
         renderConv(conv);
       }
+      if (historyExportId === button.dataset.del) historyExportId = null;
       renderHistory();
     });
   });
@@ -894,6 +1013,13 @@ async function init() {
     if (els.modelPicker.classList.contains("hidden")) openModelPicker();
     else closeModelPicker();
   });
+  window.addEventListener("resize", () => {
+    if (!els.modelPicker.classList.contains("hidden")) {
+      positionModelMenus();
+      const activeProvider = els.modelPicker.querySelector(".model-submenu")?.dataset.provider;
+      if (activeProvider) openProviderModels(activeProvider);
+    }
+  });
   $("btnCloseModel").addEventListener("click", closeModelPicker);
   els.btnSkillContext.addEventListener("click", () => {
     if (els.skillPicker.classList.contains("hidden")) openSkillPicker();
@@ -906,7 +1032,7 @@ async function init() {
   document.addEventListener("pointerdown", (e) => {
     if (!e.target.closest(".model-picker-wrap")) closeModelPicker();
     if (!e.target.closest(".composer-inline-row")) closeSkillPicker();
-    if (!e.target.closest(".box")) closeAttachmentMenu();
+    if (!e.target.closest(".attachment-menu") && !e.target.closest("#btnAdd")) closeAttachmentMenu();
   });
   $("btnSend").addEventListener("click", send);
   $("btnStop").addEventListener("click", () => ensurePort().postMessage({ type: "stop" }));
@@ -968,6 +1094,14 @@ async function init() {
       els.input.value = "";
       cancelEdit();
       return;
+    }
+    if (e.key === "Enter" && !e.shiftKey && !els.slash.classList.contains("hidden")) {
+      const active = els.slash.querySelector(".active[data-id]") || els.slash.querySelector("[data-id]");
+      if (active) {
+        e.preventDefault();
+        pickSkill(active.dataset.id);
+        return;
+      }
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();

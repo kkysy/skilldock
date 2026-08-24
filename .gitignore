@@ -22,3 +22,6 @@ coverage/
 
 # JavaScript dependencies
 node_modules/
+
+# Personal UI references (kept locally only)
+temp_example/

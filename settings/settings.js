@@ -5,6 +5,7 @@ import { localizeDocument, normalizeLanguage, t } from "../shared/i18n.js";
 
 const $ = (id) => document.getElementById(id);
 let state;
+let generalSaveTimer;
 
 // 供视觉测试用：?theme=light|dark 直接覆盖主题，无需扩展环境
 const previewTheme = new URLSearchParams(location.search).get("theme");
@@ -43,6 +44,39 @@ function fillGeneral() {
   $("thinkingDefault").checked = !!s.thinkingDefault;
   $("disabledSites").value = (s.disabledSites || []).join("\n");
   $("systemPrompt").value = s.systemPrompt || "";
+}
+
+function readGeneralSettings() {
+  return {
+    language: normalizeLanguage($("language").value),
+    theme: $("theme").value,
+    fontSize: Number($("fontSize").value) || 14,
+    selectionToolbar: $("selectionToolbar").checked,
+    inputDot: $("inputDot").checked,
+    quickChat: $("quickChat").checked,
+    browserControl: $("browserControl").checked,
+    webSearchEnabled: $("webSearchEnabled").checked,
+    readPageByDefault: $("readPageByDefault").checked,
+    thinkingDefault: $("thinkingDefault").checked,
+    disabledSites: $("disabledSites").value.split("\n").map((s) => s.trim()).filter(Boolean),
+    systemPrompt: $("systemPrompt").value
+  };
+}
+
+async function saveGeneralSettings() {
+  clearTimeout(generalSaveTimer);
+  generalSaveTimer = undefined;
+  Object.assign(state.settings, readGeneralSettings());
+  try {
+    await saveState(state);
+  } catch (error) {
+    console.error("Failed to auto-save general settings", error);
+  }
+}
+
+function scheduleGeneralSave() {
+  clearTimeout(generalSaveTimer);
+  generalSaveTimer = setTimeout(saveGeneralSettings, 300);
 }
 
 function language() {
@@ -119,15 +153,18 @@ function renderProviders() {
 function renderSkills() {
   $("skillList").innerHTML = (state.skills || [])
     .map(
-      (s) => `<div class="card">
-        <strong>${s.name}</strong> <span class="muted">/${s.slash || ""} ${s.quick ? `· ${t("快捷", language())}` : ""} ${s.enabled === false ? `· ${t("已禁用", language())}` : ""}</span>
+      (s) => {
+        const disabled = s.enabled === false;
+        return `<div class="card skill-card ${disabled ? "is-disabled" : "is-enabled"}">
+        <strong>${s.name}</strong> <span class="muted">/${s.slash || ""} ${s.quick ? `· ${t("快捷", language())}` : ""}</span>
         <div class="muted">${s.description || ""}</div>
         <div class="row skill-actions">
           <button class="skill-action" data-edit="${s.id}" title="${t("编辑技能", language())}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.7 3.7 3.7-.7L18.6 7.9a2.5 2.5 0 0 0-3.5-3.5L4 16.5Z" /><path d="m13.8 6.2 4 4" /></svg><span>${t("编辑", language())}</span></button>
-          <button class="skill-action" data-toggles="${s.id}" title="${t(s.enabled === false ? "启用技能" : "禁用技能", language())}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9" /><path d="M7.05 5.05a8 8 0 1 0 9.9 0" /></svg><span>${t(s.enabled === false ? "启用" : "禁用", language())}</span></button>
+          <button class="skill-action ${disabled ? "skill-action-enable" : "skill-action-disable"}" data-toggles="${s.id}" title="${t(disabled ? "启用技能" : "禁用技能", language())}" aria-pressed="${!disabled}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9" /><path d="M7.05 5.05a8 8 0 1 0 9.9 0" /></svg><span>${t(disabled ? "启用" : "禁用", language())}</span></button>
           <button class="skill-action skill-action-danger" data-dels="${s.id}" title="${t("删除技能", language())}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M6.5 7l.8 13h9.4l.8-13M9 7V4h6v3" /></svg><span>${t("删除", language())}</span></button>
         </div>
-      </div>`
+      </div>`;
+      }
     )
     .join("") || `<p>${t("还没有技能", language())}</p>`;
   $("skillList").querySelectorAll("[data-edit]").forEach((b) =>
@@ -173,36 +210,35 @@ async function init() {
   $("theme").addEventListener("change", () => {
     state.settings.theme = $("theme").value;
     applyTheme();
+    saveGeneralSettings();
   });
   $("language").addEventListener("change", () => {
     state.settings.language = normalizeLanguage($("language").value);
     applyLanguage();
+    saveGeneralSettings();
   });
-  $("fontSize").addEventListener("input", () => syncFontSize(Number($("fontSize").value)));
+  $("fontSize").addEventListener("input", () => {
+    syncFontSize(Number($("fontSize").value));
+    scheduleGeneralSave();
+  });
+  $("fontSize").addEventListener("change", saveGeneralSettings);
+  ["selectionToolbar", "inputDot", "quickChat", "browserControl", "webSearchEnabled", "readPageByDefault", "thinkingDefault"].forEach((id) => {
+    $(id).addEventListener("change", saveGeneralSettings);
+  });
+  ["disabledSites", "systemPrompt"].forEach((id) => {
+    $(id).addEventListener("input", scheduleGeneralSave);
+    $(id).addEventListener("change", saveGeneralSettings);
+  });
+  window.addEventListener("pagehide", () => {
+    if (generalSaveTimer) saveGeneralSettings();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden" && generalSaveTimer) saveGeneralSettings();
+  });
   renderProviders();
   renderSkills();
 
   document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
-
-  $("saveGeneral").addEventListener("click", async () => {
-    Object.assign(state.settings, {
-      language: normalizeLanguage($("language").value),
-      theme: $("theme").value,
-      fontSize: Number($("fontSize").value) || 14,
-      selectionToolbar: $("selectionToolbar").checked,
-      inputDot: $("inputDot").checked,
-      quickChat: $("quickChat").checked,
-      browserControl: $("browserControl").checked,
-      webSearchEnabled: $("webSearchEnabled").checked,
-      readPageByDefault: $("readPageByDefault").checked,
-      thinkingDefault: $("thinkingDefault").checked,
-      disabledSites: $("disabledSites").value.split("\n").map((s) => s.trim()).filter(Boolean),
-      systemPrompt: $("systemPrompt").value
-    });
-    await saveState(state);
-    $("saveGeneral").querySelector("span").textContent = t("已保存", language());
-    setTimeout(() => ($("saveGeneral").querySelector("span").textContent = t("保存常规设置", language())), 1200);
-  });
 
   $("addCustom").addEventListener("click", async () => {
     const name = $("cName").value.trim();

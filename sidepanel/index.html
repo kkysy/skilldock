@@ -61,30 +61,11 @@
 
       <footer class="composer">
         <div id="chips" class="chips"></div>
-        <div class="composer-head">
-          <span class="composer-context"><span class="context-dot"></span>准备好开始对话</span>
-          <div class="model-picker-wrap">
-            <button id="btnModel" class="model-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" title="切换模型">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M7 5.5h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z" />
-                <path d="M8.5 9h7M8.5 12h4.5M8.5 15h3" />
-              </svg>
-              <span id="modelLabel">选择模型</span>
-              <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-            </button>
-            <div id="modelPicker" class="model-picker hidden" role="dialog" aria-label="选择模型">
-              <div class="model-picker-head">
-                <strong>选择模型</strong>
-                <button id="btnCloseModel" class="picker-close" type="button" aria-label="关闭模型选择">×</button>
-              </div>
-              <div id="modelPickerBody" class="model-picker-body"></div>
-            </div>
-          </div>
-        </div>
         <div class="box">
           <div class="composer-inline-row">
+            <div id="skillTags" class="skill-tags" aria-live="polite"></div>
             <button id="btnSkillContext" class="skill-context" type="button" aria-haspopup="listbox" aria-expanded="false" title="选择技能">
-              <span class="skill-context-prefix">/</span><span id="skillContextLabel">技能</span>
+              <span class="skill-context-prefix">+</span><span id="skillContextLabel">技能</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 10 5 5 5-5" /></svg>
             </button>
             <div id="skillPicker" class="skill-picker hidden" role="listbox" aria-label="选择技能"></div>
@@ -95,6 +76,23 @@
               <select id="skill" class="skill-tool-select hidden" aria-label="选择技能">
                 <option value="">技能</option>
               </select>
+              <div class="model-picker-wrap">
+                <button id="btnModel" class="model-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" title="切换模型">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M7 5.5h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z" />
+                    <path d="M8.5 9h7M8.5 12h4.5M8.5 15h3" />
+                  </svg>
+                  <span id="modelLabel">选择模型</span>
+                  <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                </button>
+                <div id="modelPicker" class="model-picker hidden" role="dialog" aria-label="选择模型">
+                  <div class="model-picker-head">
+                    <strong>选择模型</strong>
+                    <button id="btnCloseModel" class="picker-close" type="button" aria-label="关闭模型选择">×</button>
+                  </div>
+                  <div id="modelPickerBody" class="model-picker-body"></div>
+                </div>
+              </div>
               <label class="tool-toggle" title="把当前网页正文附加到问题"><input type="checkbox" id="includePage" /><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5h14v15H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg><span>当前页</span></label>
               <label class="tool-toggle" title="让支持的模型先输出推理过程再作答"><input type="checkbox" id="thinking" /><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4" /><path d="M8.4 14.8A6.4 6.4 0 1 1 15.7 15c-.9.7-1.4 1.5-1.5 2.4h-4.4c-.1-1-.6-1.8-1.4-2.6Z" /></svg><span>思考</span></label>
               <button id="btnAdd" class="add-btn" type="button" title="添加页面或文件" aria-haspopup="menu" aria-expanded="false" aria-label="添加页面或文件">
@@ -103,7 +101,7 @@
             </div>
             <input id="fileInput" type="file" multiple hidden accept="image/*,.pdf,.txt,.md,.json,.csv,.js,.py,.html,.css,.log" />
             <span class="grow"></span>
-            <button id="btnStop" class="stop-btn hidden" type="button">停止</button>
+            <button id="btnStop" class="stop-btn hidden" type="button" title="停止生成" aria-label="停止生成"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg></button>
             <button id="btnSend" class="send-btn" type="button" title="发送消息" aria-label="发送消息" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg></button>
           </div>
           <div id="attachmentMenu" class="attachment-menu hidden" role="menu" aria-label="添加页面或文件">

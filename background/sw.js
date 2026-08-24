@@ -506,18 +506,16 @@ async function runTool(name, args, ctx) {
   }
 }
 
-function toolNamesFor(settings, skill) {
+function toolNamesFor(settings, skills = []) {
+  const hasSkills = skills.length > 0;
+  const allows = (tool, fallback) => hasSkills ? skills.some((skill) => skill?.tools?.[tool]) : fallback;
   const names = [];
-  const read = skill?.tools?.readPage ?? settings.readPageByDefault;
+  const read = allows("readPage", settings.readPageByDefault);
   if (read) names.push("read_page", "list_tabs", "extract_links", "search_page");
-  const canSearchWeb = settings.webSearchEnabled !== false && (!skill || skill?.tools?.webSearch);
+  const canSearchWeb = settings.webSearchEnabled !== false && allows("webSearch", true);
   if (canSearchWeb) names.push("web_search", "read_search_result");
-  if (settings.browserControl && skill?.tools?.browser) {
+  if (settings.browserControl && allows("browser", settings.browserControl)) {
     names.push("click_element", "fill_element", "scroll_page", "open_tab");
-  }
-  if (!skill && settings.readPageByDefault) {
-    names.push("read_page", "list_tabs", "extract_links", "search_page");
-    if (settings.browserControl) names.push("click_element", "fill_element", "scroll_page", "open_tab");
   }
   return [...new Set(names)];
 }
@@ -584,7 +582,13 @@ async function handleChat(port, req) {
     throw new Error(`请先在设置里填写 ${provider.name} 的 API Key`);
   }
   const model = req.model || settings.model;
-  const skill = req.skillId ? findSkill(state, req.skillId) : null;
+  const requestedSkillIds = Array.isArray(req.skillIds)
+    ? req.skillIds
+    : req.skillId ? [req.skillId] : [];
+  const skills = [...new Set(requestedSkillIds)]
+    .map((id) => findSkill(state, id))
+    .filter((skill) => skill?.enabled !== false);
+  const skill = skills[0] || null;
   const tab = await getTab(req.tabId);
   if (tab?.url && (settings.disabledSites || []).some((p) => matchSite(p, tab.url))) {
     throw new Error(`已在 ${hostOf(tab.url)} 禁用 Skilldock`);
@@ -596,6 +600,7 @@ async function handleChat(port, req) {
       providerId: provider.id,
       model,
       skillId: skill?.id || null,
+      skillIds: skills.map((item) => item.id),
       title: (req.text || "新对话").slice(0, 40)
     });
   }
@@ -632,12 +637,12 @@ async function handleChat(port, req) {
     .join("\n\n");
 
   let userText = req.text || "";
-  if (skill) userText = `【技能：${skill.name}】\n${userText}`.trim();
+  if (skills.length) userText = `【技能：${skills.map((item) => item.name).join("、")}】\n${userText}`.trim();
   if (fileNotes) userText += `\n\n${fileNotes}`;
 
   const toolCache = new Map();
-  const includePage = req.includePage !== false && (skill?.tools?.readPage ?? settings.readPageByDefault);
-  const toolNames = toolNamesFor(settings, skill);
+  const includePage = req.includePage !== false && (skills.length ? skills.some((item) => item.tools?.readPage) : settings.readPageByDefault);
+  const toolNames = toolNamesFor(settings, skills);
   if (includePage && tab?.id) {
     const ctx = await collectContext(tab.id, req.extraTabIds || [], toolCache);
     if (ctx.text) userText += `\n\n---\n当前页面上下文：\n${ctx.text}`;
@@ -661,7 +666,9 @@ async function handleChat(port, req) {
   });
 
   const systemParts = [settings.systemPrompt || ""];
-  if (skill?.instructions) systemParts.push(`技能说明：\n${skill.instructions}`);
+  skills.forEach((item) => {
+    if (item.instructions) systemParts.push(`技能「${item.name}」说明：\n${item.instructions}`);
+  });
   if (includePage) {
     systemParts.push(`当前用户消息里只有当前页面的首段预览，不是全文。若问题涉及全文、文献、事件经过或预览中未出现的内容，必须调用 read_page；根据结果中的‘下一段 start’连续读取后续分段，直到‘还有后续内容：否’或已有足够证据。不要重复读取相同 start。只可调用以下工具：${toolNames.join("、")}。不要拼接或重复工具名。`);
   }
@@ -846,6 +853,8 @@ async function handleChat(port, req) {
   }
   conv.providerId = provider.id;
   conv.model = model;
+  conv.skillId = skill?.id || null;
+  conv.skillIds = skills.map((item) => item.id);
   await upsertConversation(conv);
   send(port, { type: "done", id: assistantId, conversation: conv });
 }

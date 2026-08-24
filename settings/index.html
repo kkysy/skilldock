@@ -129,7 +129,6 @@
           <textarea id="systemPrompt" rows="5"></textarea>
         </div>
       </div>
-      <button id="saveGeneral" class="primary save-general"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h12l3 3v13H5z" /><path d="M8 4v6h8V4M8 20v-6h8v6" /></svg><span>保存常规设置</span></button>
     </section>
 
     <section id="models" class="tab hidden">
@@ -158,10 +157,13 @@
           <label class="field"><span>斜杠命令</span><input id="sSlash" placeholder="例如：summarize" /></label>
           <label class="field"><span>简介</span><input id="sDesc" placeholder="一句话说明技能用途" /></label>
           <label class="field"><span>技能说明 / 系统指令</span><textarea id="sInst" rows="6" placeholder="描述技能应该如何工作"></textarea></label>
-          <label class="row"><input id="sQuick" type="checkbox" /> 快捷技能</label>
-          <label class="row"><input id="sRead" type="checkbox" checked /> 可读当前页</label>
-          <label class="row"><input id="sBrowser" type="checkbox" /> 可用浏览器操作</label>
-          <label class="row"><input id="sSearch" type="checkbox" /> 可用网络搜索</label>
+          <div class="skill-settings" aria-label="技能功能与权限">
+            <span class="skill-settings-title">功能与权限</span>
+            <label class="row skill-setting switch-row"><span>快捷技能</span><input id="sQuick" type="checkbox" class="switch" /></label>
+            <label class="row skill-setting switch-row"><span>可读当前页</span><input id="sRead" type="checkbox" class="switch" checked /></label>
+            <label class="row skill-setting switch-row"><span>可用浏览器操作</span><input id="sBrowser" type="checkbox" class="switch" /></label>
+            <label class="row skill-setting switch-row"><span>可用网络搜索</span><input id="sSearch" type="checkbox" class="switch" /></label>
+          </div>
           <button id="addSkill" class="primary">保存技能</button>
         </div>
       </div>
