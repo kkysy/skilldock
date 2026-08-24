@@ -690,7 +690,7 @@ async function handleChat(port, req) {
       model,
       skillId: skill?.id || null,
       skillIds: skills.map((item) => item.id),
-      title: (req.text || "新对话").slice(0, 40)
+      title: (req.text || skill?.name || "新对话").slice(0, 40)
     });
   }
 
@@ -751,7 +751,8 @@ async function handleChat(port, req) {
     role: "user",
     content: userText,
     // display 是用户实际输入的原文；content 拼了文件和页面上下文，仅供发给模型
-    display: req.text || "",
+    // 空输入直接发技能时，用 /技能名 占位，与侧边栏本地预览保持一致
+    display: req.text || (skills.length ? skills.map((item) => `/${item.slash || item.name}`).join(" ") : ""),
     images,
     createdAt: Date.now()
   });

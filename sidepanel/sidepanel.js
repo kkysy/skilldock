@@ -244,6 +244,7 @@ function renderSkillContext() {
 function updateSkillsAfterSelection({ focus = true, close = false } = {}) {
   syncSkillSelect();
   renderSkillContext();
+  updateSendState();
   if (close) closeSkillPicker();
   if (focus) els.input.focus();
 }
@@ -301,7 +302,7 @@ function setBusy(on) {
 }
 
 function updateSendState() {
-  els.btnSend.disabled = streaming || !els.input.value.trim();
+  els.btnSend.disabled = streaming || (!els.input.value.trim() && !selectedSkillIds.length);
 }
 
 function emptyView() {
@@ -824,7 +825,14 @@ function escapeAttr(s) {
 
 async function send() {
   const text = els.input.value.trim();
-  if (!text || streaming) return;
+  // 选了技能时允许空输入直接发送，展示层用 /技能名 占位
+  if ((!text && !selectedSkillIds.length) || streaming) return;
+  const skillLabel = selectedSkillIds
+    .map((id) => (state.skills || []).find((s) => s.id === id))
+    .filter(Boolean)
+    .map((s) => `/${s.slash || s.name}`)
+    .join(" ");
+  const displayText = text || skillLabel;
   const editId = editingMessageId;
   if (editId) {
     const conv = state.conversations.find((c) => c.id === activeId);
@@ -835,10 +843,10 @@ async function send() {
     }
   }
   if (els.messages.querySelector(".empty")) els.messages.innerHTML = "";
-  const localUser = { id: uid("u"), role: "user", content: text, display: text, createdAt: Date.now() };
+  const localUser = { id: uid("u"), role: "user", content: text, display: displayText, createdAt: Date.now() };
   const localEl = addMsgEl(localUser);
   attachUserFooter(localEl, localUser, true);
-  pendingUser = { id: localUser.id, text };
+  pendingUser = { id: localUser.id, text: displayText };
   els.input.value = "";
   updateSendState();
   hideSlash();
