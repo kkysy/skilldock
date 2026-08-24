@@ -4,9 +4,8 @@
   window.__skilldockContent = true;
 
   const ROOT_ID = "skilldock-root";
-  let settings = { selectionToolbar: true, quickChat: true, disabledSites: [] };
+  let settings = { selectionToolbar: true, disabledSites: [] };
   let toolbar;
-  let quick;
   let selectedText = "";
   const english = () => settings.language === "en";
   const ui = (zh, en) => english() ? en : zh;
@@ -241,30 +240,6 @@
     }, 200);
   }
 
-  function toggleQuick(force) {
-    if (!settings.quickChat || disabled()) return;
-    const root = ensureRoot();
-    if (!quick) {
-      quick = document.createElement("div");
-      quick.className = "sd-quick hidden";
-      quick.innerHTML = `
-        <div class="sd-quick-hd"><span>${ui("Skilldock 快捷问", "Skilldock Quick Chat")}</span><button type="button" data-x>${ui("关闭", "Close")}</button></div>
-        <textarea placeholder="${ui("问当前页，或粘贴问题…", "Ask about this page, or paste a question…")}"></textarea>
-        <div class="sd-quick-ft"><button type="button" data-go>${ui("发送到侧边栏", "Send to side panel")}</button></div>`;
-      quick.querySelector("[data-x]").addEventListener("click", () => quick.classList.add("hidden"));
-      quick.querySelector("[data-go]").addEventListener("click", async () => {
-        const text = quick.querySelector("textarea").value.trim();
-        if (!text) return;
-        await runAction("ask", text);
-        quick.classList.add("hidden");
-      });
-      root.appendChild(quick);
-    }
-    const show = force === true || (force !== false && quick.classList.contains("hidden"));
-    quick.classList.toggle("hidden", !show);
-    if (show) quick.querySelector("textarea").focus();
-  }
-
   document.addEventListener("mouseup", (e) => {
     if (disabled()) return;
     const t = window.getSelection()?.toString().trim() || "";
@@ -277,10 +252,7 @@
     if (toolbar && !toolbar.contains(e.target)) hideToolbar();
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      hideToolbar();
-      if (quick) quick.classList.add("hidden");
-    }
+    if (e.key === "Escape") hideToolbar();
   });
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -299,10 +271,6 @@
       if (msg.type === "CLICK") return sendResponse(clickSel(msg.selector));
       if (msg.type === "FILL") return sendResponse(fillSel(msg.selector, msg.value));
       if (msg.type === "SCROLL") return sendResponse(scrollDir(msg.direction));
-      if (msg.type === "TOGGLE_QUICK_CHAT") {
-        toggleQuick();
-        return sendResponse({ ok: true });
-      }
       if (msg.type === "GET_SELECTION") return sendResponse({ ok: true, text: window.getSelection()?.toString() || "" });
     } catch (err) {
       sendResponse({ ok: false, error: err.message });
@@ -319,8 +287,8 @@
     const languageChanged = next.language !== settings.language;
     settings = { ...settings, ...next };
     if (languageChanged) {
-      toolbar?.remove(); quick?.remove();
-      toolbar = quick = null;
+      toolbar?.remove();
+      toolbar = null;
     }
   });
 })();

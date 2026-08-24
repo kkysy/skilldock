@@ -63,6 +63,20 @@
       </div>
 
       <div class="group">
+        <h2>对话</h2>
+        <div class="item">
+          <div class="item-main">
+            <span class="item-title">呼出侧边栏时</span>
+            <span class="item-desc">每次打开侧边栏时，继续最近一次的对话，或从新对话开始</span>
+          </div>
+          <select id="sidepanelStartup" class="inline">
+            <option value="recent">打开最近对话</option>
+            <option value="new">新开对话</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="group">
         <h2>功能与权限</h2>
         <label class="item switch-row">
           <div class="item-main">
@@ -70,13 +84,6 @@
             <span class="item-desc">选中网页文字后浮出快捷操作。需要读取页面内容才能工作。</span>
           </div>
           <input id="selectionToolbar" type="checkbox" class="switch" />
-        </label>
-        <label class="item switch-row">
-          <div class="item-main">
-            <span class="item-title">快捷问（Alt+Q）</span>
-            <span class="item-desc">在任意页面用快捷键唤起侧边栏提问。</span>
-          </div>
-          <input id="quickChat" type="checkbox" class="switch" />
         </label>
         <label class="item switch-row">
           <div class="item-main">

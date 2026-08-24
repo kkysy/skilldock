@@ -154,7 +154,7 @@ export function emptyState() {
       fontSize: 14,
       language: "zh-CN",
       selectionToolbar: true,
-      quickChat: true,
+      sidepanelStartup: "recent",
       browserControl: true,
       webSearchEnabled: true,
       readPageByDefault: true,

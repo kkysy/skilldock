@@ -1084,7 +1084,8 @@ async function persistSelection() {
 
 async function init() {
   state = await loadState();
-  activeId = state.activeConversationId;
+  // 「呼出侧边栏时」设置：recent 继续最近对话，new 每次从新对话开始
+  activeId = state.settings.sidepanelStartup === "new" ? null : state.activeConversationId;
   applyTheme();
   localizeDocument(language());
   fillProviders();

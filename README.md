@@ -34,7 +34,7 @@ Skilldock is a Chromium Manifest V3 extension that puts a bring-your-own-key AI 
 - **Bring your own model** — OpenAI, Anthropic, Google Gemini, OpenRouter, Ollama, and OpenAI-compatible endpoints.
 - **Skills you control** — invoke reusable prompts with `/`, choose quick skills, and configure whether a skill may read pages, search the web, or use browser tools.
 - **Web research without tab clutter** — search results include titles, URLs, and snippets; the assistant can read a selected public result page directly without opening a tab.
-- **In-page assistance** — selection toolbar, a quick-chat popup, and an optional writing dot beside focused inputs.
+- **In-page assistance** — a selection toolbar with quick actions like summarize, translate, and explain.
 - **Attachments and PDF reader** — paste screenshots, attach text files and PDFs, inspect PDFs in the built-in viewer, then send them to chat.
 - **Careful browser actions** — page reading, tab listing, link extraction, page search, and optional click/fill/scroll/open-tab tools. Actions that can change a page require confirmation.
 - **Conversation ownership** — local conversation history, chat branching, Markdown/PDF export, and JSON backup/import.
@@ -78,7 +78,6 @@ Restart Ollama, then use **Fetch model list** in Settings.
 | Shortcut | Action |
 | --- | --- |
 | `Alt+S` | Open Skilldock's side panel |
-| `Alt+Q` | Toggle quick chat in the current page |
 | `Enter` | Send the message |
 | `Shift+Enter` | Insert a newline |
 
@@ -86,7 +85,7 @@ Restart Ollama, then use **Fetch model list** in Settings.
 
 ```text
 background/   Extension service worker and tool execution
-content/      Selection toolbar, quick chat, page extraction
+content/      Selection toolbar and page extraction
 sidepanel/    Main chat interface
 settings/     Provider, skill, backup, and preference settings
 viewer/       Built-in PDF viewer

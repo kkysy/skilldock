@@ -7,7 +7,7 @@ const COPY = {
     "跟随系统": "System", "深色": "Dark", "浅色": "Light", "语言": "Language", "界面显示语言": "Interface display language", "中文": "Chinese",
     "字号": "Font size", "调整设置页与侧边栏里的文字大小": "Adjust text size in settings and the side panel.",
     "功能与权限": "Features & permissions", "划词工具条": "Selection toolbar", "选中网页文字后浮出快捷操作。需要读取页面内容才能工作。": "Show quick actions when you select page text. Requires access to page content.",
-    "快捷问（Alt+Q）": "Quick chat (Alt+Q)", "在任意页面用快捷键唤起侧边栏提问。": "Open the side panel from any page with a shortcut.",
+    "呼出侧边栏时": "When opening the side panel", "每次打开侧边栏时，继续最近一次的对话，或从新对话开始": "Each time the side panel opens, continue the most recent conversation or start a new one.", "打开最近对话": "Continue recent conversation", "新开对话": "Start a new chat",
     "允许浏览器操作": "Allow browser control", "允许 AI 点击、填写、滚动网页。敏感操作前会再次征求你的同意，请留意确认弹窗。": "Allow AI to click, fill, and scroll pages. Sensitive actions always require your approval.",
     "允许联网搜索": "Allow web search", "允许 AI 通过 DuckDuckGo 搜索公开网页。关闭后，所有技能都不能使用网络搜索。": "Allow AI to search the public web through DuckDuckGo. When off, no skill can use web search.",
     "默认附带当前页内容": "Include current page by default", "每次提问自动读取当前标签页正文。页面内容会随请求发送给你配置的模型服务商。": "Read the current tab with every question. Its content is sent to your configured model provider.",

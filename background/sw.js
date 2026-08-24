@@ -45,16 +45,6 @@ chrome.action.onClicked.addListener(async (tab) => {
   if (tab?.id) await chrome.sidePanel.open({ tabId: tab.id });
 });
 
-chrome.commands.onCommand.addListener(async (command, tab) => {
-  if (command === "quick_chat" && tab?.id) {
-    try {
-      await chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_QUICK_CHAT" });
-    } catch {
-      await chrome.sidePanel.open({ tabId: tab.id });
-    }
-  }
-});
-
 async function queueContextAction(payload) {
   await chrome.storage.session.set({ pendingAction: payload });
   chrome.runtime.sendMessage({ type: "CONTEXT_ACTION", ...payload }).catch(() => {});

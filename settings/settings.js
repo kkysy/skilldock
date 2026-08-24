@@ -50,7 +50,7 @@ function fillGeneral() {
   $("fontSize").value = s.fontSize;
   syncFontSize(s.fontSize);
   $("selectionToolbar").checked = s.selectionToolbar;
-  $("quickChat").checked = s.quickChat;
+  $("sidepanelStartup").value = s.sidepanelStartup === "new" ? "new" : "recent";
   $("browserControl").checked = s.browserControl;
   $("webSearchEnabled").checked = s.webSearchEnabled !== false;
   $("readPageByDefault").checked = s.readPageByDefault;
@@ -65,7 +65,7 @@ function readGeneralSettings() {
     theme: $("theme").value,
     fontSize: Number($("fontSize").value) || 14,
     selectionToolbar: $("selectionToolbar").checked,
-    quickChat: $("quickChat").checked,
+    sidepanelStartup: $("sidepanelStartup").value === "new" ? "new" : "recent",
     browserControl: $("browserControl").checked,
     webSearchEnabled: $("webSearchEnabled").checked,
     readPageByDefault: $("readPageByDefault").checked,
@@ -329,7 +329,8 @@ async function init() {
     scheduleGeneralSave();
   });
   $("fontSize").addEventListener("change", saveGeneralSettings);
-  ["selectionToolbar", "quickChat", "browserControl", "webSearchEnabled", "readPageByDefault", "thinkingDefault"].forEach((id) => {
+  $("sidepanelStartup").addEventListener("change", saveGeneralSettings);
+  ["selectionToolbar", "browserControl", "webSearchEnabled", "readPageByDefault", "thinkingDefault"].forEach((id) => {
     $(id).addEventListener("change", saveGeneralSettings);
   });
   ["disabledSites", "systemPrompt"].forEach((id) => {
