@@ -2,6 +2,7 @@ import { loadState, saveState, exportBundle, importBundle, emptyState, DEFAULT_P
 import { listRemoteModels } from "../shared/providers.js";
 import { uid } from "../shared/utils.js";
 import { localizeDocument, normalizeLanguage, t } from "../shared/i18n.js";
+import { renderMarkdown } from "../shared/markdown.js";
 
 const $ = (id) => document.getElementById(id);
 let state;
@@ -89,6 +90,20 @@ function applyLanguage() {
   renderSkills();
 }
 
+function setSkillMarkdownView(view) {
+  const previewing = view === "preview";
+  const editor = $("sInst");
+  const preview = $("sInstPreview");
+  preview.classList.toggle("hidden", !previewing);
+  editor.classList.toggle("hidden", previewing);
+  if (previewing) preview.innerHTML = renderMarkdown(editor.value) || `<p class="muted">${t("还没有技能说明", language())}</p>`;
+  document.querySelectorAll("[data-skill-markdown-view]").forEach((button) => {
+    const selected = button.dataset.skillMarkdownView === view;
+    button.classList.toggle("on", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
+}
+
 function renderProviders() {
   $("providerList").innerHTML = state.providers
     .map(
@@ -150,50 +165,82 @@ function renderProviders() {
   );
 }
 
+let editingSkillId = null;
+
+function editSkill(id) {
+  const s = state.skills.find((x) => x.id === id);
+  if (!s) return;
+  editingSkillId = id;
+  $("sName").value = s.name;
+  $("sSlash").value = s.slash || "";
+  $("sDesc").value = s.description || "";
+  $("sInst").value = s.instructions || "";
+  setSkillMarkdownView("edit");
+  $("sRead").checked = s.tools?.readPage !== false;
+  $("sBrowser").checked = !!s.tools?.browser;
+  $("sSearch").checked = !!s.tools?.webSearch;
+  $("addSkill").dataset.edit = s.id;
+  $("addSkill").textContent = t("更新技能", language());
+  $("skillFormTitle").textContent = t("编辑技能", language());
+  renderSkills();
+}
+
+function resetSkillForm() {
+  editingSkillId = null;
+  $("sName").value = $("sSlash").value = $("sDesc").value = $("sInst").value = "";
+  setSkillMarkdownView("edit");
+  $("sRead").checked = true;
+  $("sBrowser").checked = false;
+  $("sSearch").checked = false;
+  $("addSkill").dataset.edit = "";
+  $("addSkill").textContent = t("保存技能", language());
+  $("skillFormTitle").textContent = t("新建技能", language());
+  renderSkills();
+}
+
 function renderSkills() {
   $("skillList").innerHTML = (state.skills || [])
     .map(
       (s) => {
         const disabled = s.enabled === false;
-        return `<div class="card skill-card ${disabled ? "is-disabled" : "is-enabled"}">
-        <strong>${s.name}</strong> <span class="muted">/${s.slash || ""} ${s.quick ? `· ${t("快捷", language())}` : ""}</span>
+        return `<div class="card skill-card ${disabled ? "is-disabled" : "is-enabled"} ${editingSkillId === s.id ? "is-editing" : ""}" data-card="${s.id}" tabindex="0" role="button" aria-label="${t("编辑技能", language())}">
+        <div class="skill-card-head">
+          <div class="skill-card-title"><strong>${s.name}</strong> <span class="muted">/${s.slash || ""}</span></div>
+          <label class="skill-enabled-switch" title="${t(disabled ? "启用技能" : "禁用技能", language())}">
+            <input class="skill-master-switch" type="checkbox" data-toggles="${s.id}" ${disabled ? "" : "checked"} aria-label="${t(disabled ? "启用技能" : "禁用技能", language())}" />
+          </label>
+        </div>
         <div class="muted">${s.description || ""}</div>
         <div class="row skill-actions">
-          <button class="skill-action" data-edit="${s.id}" title="${t("编辑技能", language())}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.7 3.7 3.7-.7L18.6 7.9a2.5 2.5 0 0 0-3.5-3.5L4 16.5Z" /><path d="m13.8 6.2 4 4" /></svg><span>${t("编辑", language())}</span></button>
-          <button class="skill-action ${disabled ? "skill-action-enable" : "skill-action-disable"}" data-toggles="${s.id}" title="${t(disabled ? "启用技能" : "禁用技能", language())}" aria-pressed="${!disabled}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9" /><path d="M7.05 5.05a8 8 0 1 0 9.9 0" /></svg><span>${t(disabled ? "启用" : "禁用", language())}</span></button>
           <button class="skill-action skill-action-danger" data-dels="${s.id}" title="${t("删除技能", language())}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M6.5 7l.8 13h9.4l.8-13M9 7V4h6v3" /></svg><span>${t("删除", language())}</span></button>
         </div>
       </div>`;
       }
     )
     .join("") || `<p>${t("还没有技能", language())}</p>`;
-  $("skillList").querySelectorAll("[data-edit]").forEach((b) =>
-    b.addEventListener("click", () => {
-      const s = state.skills.find((x) => x.id === b.dataset.edit);
-      $("sName").value = s.name;
-      $("sSlash").value = s.slash || "";
-      $("sDesc").value = s.description || "";
-      $("sInst").value = s.instructions || "";
-      $("sQuick").checked = !!s.quick;
-      $("sRead").checked = s.tools?.readPage !== false;
-      $("sBrowser").checked = !!s.tools?.browser;
-      $("sSearch").checked = !!s.tools?.webSearch;
-      $("addSkill").dataset.edit = s.id;
-      $("addSkill").textContent = t("更新技能", language());
-      $("skillFormTitle").textContent = t("编辑技能", language());
-    })
-  );
+  $("skillList").querySelectorAll("[data-card]").forEach((card) => {
+    card.addEventListener("click", (event) => {
+      if (event.target.closest(".skill-enabled-switch") || event.target.closest("[data-dels]")) return;
+      editSkill(card.dataset.card);
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.target !== card || (event.key !== "Enter" && event.key !== " ")) return;
+      event.preventDefault();
+      editSkill(card.dataset.card);
+    });
+  });
   $("skillList").querySelectorAll("[data-dels]").forEach((b) =>
     b.addEventListener("click", async () => {
       state.skills = state.skills.filter((s) => s.id !== b.dataset.dels);
       await saveState(state);
-      renderSkills();
+      if (editingSkillId === b.dataset.dels) resetSkillForm();
+      else renderSkills();
     })
   );
-  $("skillList").querySelectorAll("[data-toggles]").forEach((b) =>
-    b.addEventListener("click", async () => {
-      const s = state.skills.find((x) => x.id === b.dataset.toggles);
-      s.enabled = s.enabled === false;
+  $("skillList").querySelectorAll("[data-toggles]").forEach((input) =>
+    input.addEventListener("change", async () => {
+      const s = state.skills.find((x) => x.id === input.dataset.toggles);
+      s.enabled = input.checked;
       await saveState(state);
       renderSkills();
     })
@@ -238,6 +285,10 @@ async function init() {
   renderProviders();
   renderSkills();
 
+  document.querySelectorAll("[data-skill-markdown-view]").forEach((button) =>
+    button.addEventListener("click", () => setSkillMarkdownView(button.dataset.skillMarkdownView))
+  );
+
   document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
 
   $("addCustom").addEventListener("click", async () => {
@@ -257,35 +308,35 @@ async function init() {
     renderProviders();
   });
 
+  $("newSkill").addEventListener("click", () => {
+    resetSkillForm();
+    $("sName").focus();
+  });
+
   $("addSkill").addEventListener("click", async () => {
     const name = $("sName").value.trim();
     if (!name) return;
+    const editId = $("addSkill").dataset.edit;
     const payload = {
       name,
       slash: $("sSlash").value.trim() || name.toLowerCase().replace(/\s+/g, "-"),
       description: $("sDesc").value.trim(),
       instructions: $("sInst").value.trim(),
-      quick: $("sQuick").checked,
-      enabled: true,
+      enabled: editId ? state.skills.find((s) => s.id === editId)?.enabled !== false : true,
       tools: {
         readPage: $("sRead").checked,
         browser: $("sBrowser").checked,
         webSearch: $("sSearch").checked
       }
     };
-    const editId = $("addSkill").dataset.edit;
     if (editId) {
       const s = state.skills.find((x) => x.id === editId);
-      Object.assign(s, payload);
+      if (s) Object.assign(s, payload);
     } else {
       state.skills.push({ id: uid("sk"), ...payload });
     }
     await saveState(state);
-    $("sName").value = $("sSlash").value = $("sDesc").value = $("sInst").value = "";
-    $("addSkill").dataset.edit = "";
-    $("addSkill").textContent = t("保存技能", language());
-    $("skillFormTitle").textContent = t("新建技能", language());
-    renderSkills();
+    resetSkillForm();
   });
 
   $("exportBtn").addEventListener("click", () => {

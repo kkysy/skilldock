@@ -301,7 +301,7 @@ function updateSendState() {
 }
 
 function emptyView() {
-  const quick = (state.skills || []).filter((s) => s.quick && s.enabled !== false);
+  const quick = (state.skills || []).filter((s) => s.enabled !== false);
   els.messages.innerHTML = `
     <div class="empty">
       <div class="empty-mark" aria-hidden="true">✦</div>

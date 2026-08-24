@@ -7,19 +7,22 @@
     <link rel="stylesheet" href="settings.css" />
   </head>
   <body>
-    <header>
-      <img src="../icons/icon32.png" alt="" />
-      <div>
-        <h1>Skilldock 设置</h1>
-        <p>密钥只存在本机。没有账户、订阅或广告。</p>
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="../icons/icon32.png" alt="" />
+        <div>
+          <h1>Skilldock</h1>
+          <p>设置</p>
+        </div>
       </div>
-    </header>
-    <nav>
-      <button data-tab="general" class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M8 14v6" /></svg><span>常规</span></button>
-      <button data-tab="models"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M8 9h8M8 13h5" /></svg><span>模型</span></button>
-      <button data-tab="skills"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.5 4.2L18 9l-4.5 1.8L12 15l-1.5-4.2L6 9l4.5-1.8L12 3Z" /><path d="m18 14 .7 2.1L21 17l-2.3.9L18 20l-.7-2.1L15 17l2.3-.9L18 14Z" /></svg><span>技能</span></button>
-      <button data-tab="data"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z" /><path d="M8 9h8M8 13h8M8 17h5" /></svg><span>数据</span></button>
-    </nav>
+      <p class="brand-note">密钥只存在本机。没有账户、订阅或广告。</p>
+      <nav>
+        <button data-tab="general" class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M8 14v6" /></svg><span>常规</span></button>
+        <button data-tab="models"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M8 9h8M8 13h5" /></svg><span>模型</span></button>
+        <button data-tab="skills"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.5 4.2L18 9l-4.5 1.8L12 15l-1.5-4.2L6 9l4.5-1.8L12 3Z" /><path d="m18 14 .7 2.1L21 17l-2.3.9L18 20l-.7-2.1L15 17l2.3-.9L18 14Z" /></svg><span>技能</span></button>
+        <button data-tab="data"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z" /><path d="M8 9h8M8 13h8M8 17h5" /></svg><span>数据</span></button>
+      </nav>
+    </aside>
 
     <section id="general" class="tab">
       <div class="group">
@@ -148,18 +151,41 @@
     <section id="skills" class="tab hidden">
       <div class="two-col">
         <div class="col-list">
-          <p>技能完全本地，可自由创建、编辑、设为快捷技能。输入框里用 / 调用。</p>
+          <div class="skill-list-head">
+            <h2>技能</h2>
+            <button id="newSkill" class="icon-add" type="button" title="新建技能" aria-label="新建技能">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            </button>
+          </div>
+          <p>技能完全本地，可自由创建和编辑，点击卡片即可修改。输入框里用 / 调用。</p>
           <div id="skillList"></div>
         </div>
-        <div class="col-side">
+        <div class="col-side skill-editor-panel">
           <h3 id="skillFormTitle">新建技能</h3>
-          <label class="field"><span>名称</span><input id="sName" placeholder="例如：总结当前页" /></label>
-          <label class="field"><span>斜杠命令</span><input id="sSlash" placeholder="例如：summarize" /></label>
+          <div class="skill-meta-grid">
+            <label class="field"><span>名称</span><input id="sName" placeholder="例如：总结当前页" /></label>
+            <label class="field"><span>斜杠命令</span><input id="sSlash" placeholder="例如：summarize" /></label>
+          </div>
           <label class="field"><span>简介</span><input id="sDesc" placeholder="一句话说明技能用途" /></label>
-          <label class="field"><span>技能说明 / 系统指令</span><textarea id="sInst" rows="6" placeholder="描述技能应该如何工作"></textarea></label>
+          <section class="skill-instructions" aria-labelledby="sInstLabel">
+            <div class="skill-instructions-head">
+              <div>
+                <span id="sInstLabel" class="skill-instructions-title">技能说明 / 系统指令</span>
+                <p>支持 Markdown，适合编写较长的技能规则、步骤和示例。</p>
+              </div>
+              <div class="markdown-tabs" role="tablist" aria-label="技能说明视图">
+                <button type="button" class="on" data-skill-markdown-view="edit" role="tab" aria-selected="true">编辑</button>
+                <button type="button" data-skill-markdown-view="preview" role="tab" aria-selected="false">预览</button>
+              </div>
+            </div>
+            <div class="skill-markdown-editor">
+              <div class="skill-doc-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></svg><span>SKILL.md</span></div>
+              <textarea id="sInst" rows="16" spellcheck="true" placeholder="描述技能应该如何工作"></textarea>
+              <article id="sInstPreview" class="markdown-preview hidden" tabindex="0" aria-live="polite"></article>
+            </div>
+          </section>
           <div class="skill-settings" aria-label="技能功能与权限">
             <span class="skill-settings-title">功能与权限</span>
-            <label class="row skill-setting switch-row"><span>快捷技能</span><input id="sQuick" type="checkbox" class="switch" /></label>
             <label class="row skill-setting switch-row"><span>可读当前页</span><input id="sRead" type="checkbox" class="switch" checked /></label>
             <label class="row skill-setting switch-row"><span>可用浏览器操作</span><input id="sBrowser" type="checkbox" class="switch" /></label>
             <label class="row skill-setting switch-row"><span>可用网络搜索</span><input id="sSearch" type="checkbox" class="switch" /></label>

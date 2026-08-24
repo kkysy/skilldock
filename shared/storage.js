@@ -60,7 +60,6 @@ export function defaultSkills() {
       slash: "summarize",
       description: "提炼页面要点、结论和待办。",
       instructions: "阅读当前页面内容，用简洁中文输出：1) 一句话摘要 2) 关键要点列表 3) 结论或行动项。不要编造页面里没有的信息。",
-      quick: true,
       enabled: true,
       tools: { readPage: true, browser: false, webSearch: false }
     },
@@ -70,7 +69,6 @@ export function defaultSkills() {
       slash: "translate",
       description: "中英互译所选文本或当前页。",
       instructions: "把用户给出的内容翻译成另一种语言：中文译英文，其它语言译中文。术语准确，保留原文的格式（Markdown、代码块、换行）与语气。只输出译文，不加解释或注释，除非用户要求。",
-      quick: true,
       enabled: true,
       tools: { readPage: false, browser: false, webSearch: false }
     },
@@ -80,7 +78,6 @@ export function defaultSkills() {
       slash: "explain",
       description: "用浅显语言解释选中内容。",
       instructions: "解释用户选中的文本或当前页中难懂的部分，假设读者没有相关背景：先给一句直观解释，再按需展开关键术语和必要背景。",
-      quick: true,
       enabled: true,
       tools: { readPage: true, browser: false, webSearch: false }
     },
@@ -90,7 +87,6 @@ export function defaultSkills() {
       slash: "rewrite",
       description: "改进措辞，保持原意。",
       instructions: "润色用户提供的文本：让它更清晰、流畅、得体，保留原意、语气、语言和格式（Markdown、代码、换行）。只输出润色后的文本，不加前言或说明；用户追问改了什么时再解释。",
-      quick: false,
       enabled: true,
       tools: { readPage: false, browser: false, webSearch: false }
     },
@@ -100,7 +96,6 @@ export function defaultSkills() {
       slash: "fix",
       description: "修正语法和拼写。",
       instructions: "修正文本中的语法、拼写、标点与用词问题，尽量少动措辞，保留原意、语气、语言和格式（Markdown、代码、换行）。只输出修正后的全文，不加任何解释。",
-      quick: false,
       enabled: true,
       tools: { readPage: false, browser: false, webSearch: false }
     },
@@ -110,7 +105,6 @@ export function defaultSkills() {
       slash: "shorten",
       description: "压缩篇幅，保留要点。",
       instructions: "把用户提供的文本改得更短更精炼：删掉冗余表达和重复信息，保留核心意思、关键细节、语气与格式（Markdown、代码、换行）。只输出缩写后的文本，不加说明。",
-      quick: false,
       enabled: true,
       tools: { readPage: false, browser: false, webSearch: false }
     },
@@ -120,7 +114,6 @@ export function defaultSkills() {
       slash: "expand",
       description: "补充细节，写得更充实。",
       instructions: "把用户提供的文本写得更充实：补充必要的背景、过渡和细节，让表达更完整流畅，保留原意、语气与格式（Markdown、代码、换行）。只输出扩写后的文本，不加说明。",
-      quick: false,
       enabled: true,
       tools: { readPage: false, browser: false, webSearch: false }
     },
@@ -130,7 +123,6 @@ export function defaultSkills() {
       slash: "reply",
       description: "根据页面或选中邮件/评论起草回复。",
       instructions: "根据当前页面或选中文本起草一则得体回复。默认中文、语气专业克制。给出 1 个主回复，必要时再给更短/更礼貌的备选。",
-      quick: true,
       enabled: true,
       tools: { readPage: true, browser: false, webSearch: false }
     },
@@ -140,7 +132,6 @@ export function defaultSkills() {
       slash: "extract",
       description: "抽出链接、日期、人名、数据。",
       instructions: "从当前页或附件中提取结构化信息：人名、组织、日期、链接、数字、待办。用 Markdown 表格或列表。没有的字段不要编。",
-      quick: false,
       enabled: true,
       tools: { readPage: true, browser: false, webSearch: false }
     }
