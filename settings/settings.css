@@ -250,6 +250,7 @@ input.skill-master-switch:focus-visible { outline: 2px solid var(--accent); outl
 .col-side .skill-setting { min-height: 42px; justify-content: space-between; padding: 7px 0; border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); cursor: pointer; }
 .col-side .skill-setting span { color: var(--text); }
 .col-side .primary { margin-top: 8px; align-self: flex-start; background: var(--accent); color: var(--accent-ink); border-bottom: 0; padding: 8px 14px; border-radius: 5px; }
+.skill-msg { margin: 8px 0 0; min-height: 1em; font-size: 0.8667rem; color: var(--accent); }
 .skill-meta-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
 .skill-instructions { margin-top: 4px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 .skill-instructions-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 11px 12px 9px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--field) 58%, transparent); }

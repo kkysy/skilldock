@@ -10,6 +10,24 @@ Skilldock is a Chromium Manifest V3 extension that puts a bring-your-own-key AI 
 
 > **Repository description:** A private, local-first AI side panel for Chrome — custom skills, page context, and your choice of model provider.
 
+## Screenshots
+
+**Chat beside the page** — the side panel stays docked while you browse; questions can include the current page's text.
+
+![Skilldock chat panel docked next to a web page, answering questions with page context](screenshots/chat.jpg)
+
+**Send and read images** — attach screenshots or page images; vision-capable models can see and discuss them.
+
+![Conversation where the model receives and interprets an attached image](screenshots/chatwithpicture.jpg)
+
+**LaTeX math rendering** — formulas in model replies are rendered with KaTeX, alongside Markdown and streaming output.
+
+![Assistant reply with rendered LaTeX formulas](screenshots/LaTeXsupport.jpg)
+
+**Custom skills** — build your own skills with a slash command, Markdown instructions, and per-skill permissions for page reading, web search, and browser tools.
+
+![Skill editor for creating a custom skill with slash command and permissions](screenshots/createyourskill.jpg)
+
 ## Highlights
 
 - **Page-aware chat** — send the current page's readable text and relevant images with a question; attach other tabs when needed.

@@ -164,6 +164,17 @@ function renderProviders() {
 }
 
 let editingSkillId = null;
+let skillMsgTimer;
+
+function showSkillMsg(text) {
+  const el = $("skillMsg");
+  if (!el) return;
+  el.textContent = text;
+  clearTimeout(skillMsgTimer);
+  skillMsgTimer = setTimeout(() => {
+    el.textContent = "";
+  }, 3000);
+}
 
 function editSkill(id) {
   const s = state.skills.find((x) => x.id === id);
@@ -330,11 +341,15 @@ async function init() {
     if (editId) {
       const s = state.skills.find((x) => x.id === editId);
       if (s) Object.assign(s, payload);
+      await saveState(state);
+      renderSkills();
+      showSkillMsg(t("技能已更新", language()));
     } else {
       state.skills.push({ id: uid("sk"), ...payload });
+      await saveState(state);
+      resetSkillForm();
+      showSkillMsg(t("技能已保存", language()));
     }
-    await saveState(state);
-    resetSkillForm();
   });
 
   $("exportBtn").addEventListener("click", () => {

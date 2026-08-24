@@ -988,7 +988,21 @@ function showSlash(filter) {
     .join("");
   els.slash.querySelectorAll("div").forEach((d) => {
     d.addEventListener("click", () => pickSkill(d.dataset.id));
+    d.addEventListener("mouseenter", () => setSlashActive(d));
   });
+}
+
+function setSlashActive(target) {
+  els.slash.querySelectorAll("div").forEach((d) => d.classList.toggle("active", d === target));
+}
+
+function moveSlashActive(delta) {
+  const items = [...els.slash.querySelectorAll("[data-id]")];
+  if (!items.length) return;
+  const current = items.findIndex((d) => d.classList.contains("active"));
+  const next = items[(current + delta + items.length) % items.length];
+  setSlashActive(next);
+  next.scrollIntoView({ block: "nearest" });
 }
 
 function hideSlash() {
@@ -1156,13 +1170,24 @@ async function init() {
     hidePopup(els.perm);
   });
   els.input.addEventListener("keydown", (e) => {
+    const slashOpen = !els.slash.classList.contains("hidden");
+    if (slashOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      moveSlashActive(e.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
+    if (slashOpen && e.key === "Escape") {
+      e.preventDefault();
+      hideSlash();
+      return;
+    }
     if (e.key === "Escape" && editingMessageId) {
       e.preventDefault();
       els.input.value = "";
       cancelEdit();
       return;
     }
-    if (e.key === "Enter" && !e.shiftKey && !els.slash.classList.contains("hidden")) {
+    if (e.key === "Enter" && !e.shiftKey && slashOpen) {
       const active = els.slash.querySelector(".active[data-id]") || els.slash.querySelector("[data-id]");
       if (active) {
         e.preventDefault();

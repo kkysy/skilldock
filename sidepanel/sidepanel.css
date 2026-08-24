@@ -707,18 +707,21 @@ textarea#input::placeholder { color: var(--muted); }
 .slash {
   position: absolute;
   left: 12px;
-  right: 12px;
-  bottom: 110px;
+  bottom: 100%;
+  margin-bottom: 6px;
+  width: max-content;
+  min-width: 200px;
+  max-width: min(420px, calc(100% - 24px));
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 7px;
-  max-height: 220px;
+  max-height: min(220px, 60vh);
   overflow: auto;
   z-index: 4;
 }
 .model-picker.popup-enter, .skill-picker.popup-enter, .attachment-menu.popup-enter, .slash.popup-enter { animation: popup-in .16s cubic-bezier(.2, .8, .2, 1); }
 .model-picker.popup-leave, .skill-picker.popup-leave, .attachment-menu.popup-leave, .slash.popup-leave { animation: popup-out .14s ease-in forwards; pointer-events: none; }
-.slash div { padding: 8px 10px; cursor: pointer; }
+.slash div { padding: 8px 10px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .slash div:hover, .slash div.active { background: var(--accent-soft); color: var(--text-strong); }
 .perm {
   position: absolute;
