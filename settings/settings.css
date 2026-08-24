@@ -129,8 +129,8 @@ nav button.on {
 .data-action svg, .skill-action svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .data-action:hover, .skill-action:hover { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 58%, var(--border)); color: var(--accent); }
 .data-action:active, .skill-action:active { transform: translateY(1px); }
-.data-action-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.data-action-primary:hover { background: color-mix(in srgb, var(--accent) 88%, white); border-color: var(--accent); color: var(--accent-ink); }
+.data-action-primary { background: var(--text-strong); border-color: var(--text-strong); color: var(--bg); }
+.data-action-primary:hover { background: color-mix(in srgb, var(--text-strong) 85%, var(--bg)); border-color: color-mix(in srgb, var(--text-strong) 85%, var(--bg)); color: var(--bg); }
 .hidden { display: none !important; }
 label { display: block; margin: 12px 0; }
 input, select, textarea {
@@ -249,7 +249,7 @@ input.skill-master-switch:focus-visible { outline: 2px solid var(--accent); outl
 .skill-settings-title { padding: 11px 0 6px; color: var(--muted); font-size: .8rem; font-weight: 650; }
 .col-side .skill-setting { min-height: 42px; justify-content: space-between; padding: 7px 0; border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); cursor: pointer; }
 .col-side .skill-setting span { color: var(--text); }
-.col-side .primary { background: var(--accent); color: var(--accent-ink); border-bottom: 0; padding: 8px 14px; border-radius: 5px; }
+.col-side .primary { background: var(--text-strong); color: var(--bg); border-bottom: 0; padding: 8px 14px; border-radius: 5px; }
 .col-side .primary:disabled { background: var(--field); color: var(--muted); cursor: not-allowed; }
 .skill-editor-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .skill-editor-head h3 { margin: 0; }

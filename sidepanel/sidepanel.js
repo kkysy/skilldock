@@ -25,7 +25,7 @@ const ICONS = {
   markdown: `<svg ${SVG_ATTRS}><path d="M5 5h14v14H5z" /><path d="m8 15 2-6 2 4 2-4 2 6M8 18h8" /></svg>`,
   pdf: `<svg ${SVG_ATTRS}><path d="M6 3.5h9l3 3V20.5H6z" /><path d="M9 15h6M10 11h2a1.5 1.5 0 0 0 0-3H10zM14.5 8v4" /></svg>`,
   trash: `<svg ${SVG_ATTRS}><path d="M5 7h14M10 11v6M14 11v6M6.5 7l.8 13h9.4l.8-13M9 7V4h6v3" /></svg>`,
-  toTop: `<svg ${SVG_ATTRS}><path d="M12 19V5" /><path d="M5 12l7-7 7 7" /></svg>`
+  toTop: `<svg ${SVG_ATTRS}><path d="M5 4h14" /><path d="M12 20V9" /><path d="M6 14l6-6 6 6" /></svg>`
 };
 const els = {
   provider: $("provider"),
