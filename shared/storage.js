@@ -52,6 +52,15 @@ export const DEFAULT_PROVIDERS = [
   }
 ];
 
+export function isCustomProvider(p) {
+  return !DEFAULT_PROVIDERS.some((d) => d.id === p.id);
+}
+
+// 用户自加的供应商排在内置之前，组内保持原有顺序
+export function sortProviders(providers) {
+  return [...(providers || [])].sort((a, b) => Number(isCustomProvider(b)) - Number(isCustomProvider(a)));
+}
+
 export function defaultSkills() {
   return [
     {

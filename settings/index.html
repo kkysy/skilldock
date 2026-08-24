@@ -154,7 +154,11 @@
           <div id="skillList"></div>
         </div>
         <div class="col-side skill-editor-panel">
-          <h3 id="skillFormTitle">新建技能</h3>
+          <div class="skill-editor-head">
+            <h3 id="skillFormTitle">新建技能</h3>
+            <button id="addSkill" class="primary">保存技能</button>
+          </div>
+          <p id="skillMsg" class="skill-msg" role="status" aria-live="polite"></p>
           <div class="skill-meta-grid">
             <label class="field"><span>名称</span><input id="sName" placeholder="例如：总结当前页" /></label>
             <label class="field"><span>斜杠命令</span><input id="sSlash" placeholder="例如：summarize" /></label>
@@ -183,8 +187,6 @@
             <label class="row skill-setting switch-row"><span>可用浏览器操作</span><input id="sBrowser" type="checkbox" class="switch" /></label>
             <label class="row skill-setting switch-row"><span>可用网络搜索</span><input id="sSearch" type="checkbox" class="switch" /></label>
           </div>
-          <button id="addSkill" class="primary">保存技能</button>
-          <p id="skillMsg" class="skill-msg" role="status" aria-live="polite"></p>
         </div>
       </div>
     </section>

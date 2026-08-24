@@ -358,6 +358,9 @@ select, textarea, input[type="text"], #historySearch {
 }
 .trace .msg.tool::before { background: var(--gold); }
 .trace .msg.think::before { background: var(--accent); }
+/* 时间线内思考与工具消息统一继承 trace 的字号与颜色，避免两者字体不一致 */
+.trace .msg.think { font-size: inherit; color: inherit; }
+.trace .msg.think .who { font-size: 0.7857rem; /* 11px */ margin-bottom: 4px; }
 .katex-display {
   overflow-x: auto;
   overflow-y: hidden;
@@ -432,9 +435,7 @@ select, textarea, input[type="text"], #historySearch {
 .provider-option.selected { color: var(--text-strong); }
 .provider-option-meta { display: inline-flex; align-items: center; gap: 10px; color: var(--accent); }
 .model-submenu { position: absolute; left: calc(100% - 1px); top: 0; z-index: 1; width: var(--model-menu-width, 280px); max-height: min(320px, 62vh); overflow-x: hidden; overflow-y: auto; padding: 7px; border: 1px solid var(--border); border-radius: 13px; background: var(--panel); box-shadow: var(--shadow); overscroll-behavior: contain; }
-.model-submenu-head { position: sticky; top: -7px; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 5px 8px; background: var(--panel); color: var(--muted); font-size: .7857rem; }
-.model-submenu-head button { width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 1.45rem; line-height: 1; cursor: pointer; }
-.model-submenu-head button:hover { background: var(--hover); color: var(--text); }
+.model-submenu-head { position: sticky; top: -7px; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 12px 5px 8px; background: var(--panel); color: var(--muted); font-size: .7857rem; }
 .provider-section + .provider-section { margin-top: 7px; }
 .provider-name { display: block; padding: 5px 8px 3px; color: var(--muted); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
 .model-option {
@@ -709,20 +710,19 @@ textarea#input::placeholder { color: var(--muted); }
   left: 12px;
   bottom: 100%;
   margin-bottom: 6px;
-  width: max-content;
-  min-width: 200px;
-  max-width: min(420px, calc(100% - 24px));
+  width: min(280px, calc(100vw - 48px));
+  max-height: min(310px, 52vh);
+  overflow: auto;
+  padding: 6px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 7px;
-  max-height: min(220px, 60vh);
-  overflow: auto;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
   z-index: 4;
 }
 .model-picker.popup-enter, .skill-picker.popup-enter, .attachment-menu.popup-enter, .slash.popup-enter { animation: popup-in .16s cubic-bezier(.2, .8, .2, 1); }
 .model-picker.popup-leave, .skill-picker.popup-leave, .attachment-menu.popup-leave, .slash.popup-leave { animation: popup-out .14s ease-in forwards; pointer-events: none; }
-.slash div { padding: 8px 10px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.slash div:hover, .slash div.active { background: var(--accent-soft); color: var(--text-strong); }
+.slash .skill-picker-option.active { background: var(--accent-soft); color: var(--text-strong); }
 .perm {
   position: absolute;
   inset: 0;
@@ -786,7 +786,7 @@ textarea#input::placeholder { color: var(--muted); }
 .to-top:hover { color: var(--text); transform: translateY(-2px); }
 
 /* 交互过渡与可访问性 */
-.icon-btn, .ghost, .primary, .hist, .chip button, .quick-skills button, .slash div, .tool-btn, .tool-toggle {
+.icon-btn, .ghost, .primary, .hist, .chip button, .quick-skills button, .skill-picker-option, .tool-btn, .tool-toggle {
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 :focus-visible {
@@ -818,6 +818,18 @@ textarea#input::placeholder { color: var(--muted); }
   scroll-behavior: smooth;
 }
 .empty { max-width: 390px; margin: auto; transform: translateY(-7%); }
+/* 新对话/空状态入场：欢迎语与快捷技能依次上浮渐入 */
+.empty > * { animation: empty-rise .45s cubic-bezier(.2, .8, .2, 1) both; }
+.empty > h2 { animation-delay: 70ms; }
+.empty > p { animation-delay: 140ms; }
+.empty > .quick-skills { animation-delay: 210ms; }
+.empty .quick-skills button { animation: empty-rise .4s cubic-bezier(.2, .8, .2, 1) both; }
+.empty .quick-skills button:nth-child(1) { animation-delay: 240ms; }
+.empty .quick-skills button:nth-child(2) { animation-delay: 290ms; }
+.empty .quick-skills button:nth-child(3) { animation-delay: 340ms; }
+.empty .quick-skills button:nth-child(4) { animation-delay: 390ms; }
+.empty .quick-skills button:nth-child(n+5) { animation-delay: 440ms; }
+@keyframes empty-rise { from { opacity: 0; transform: translateY(14px); } }
 .empty-mark {
   display: grid;
   place-items: center;
@@ -860,6 +872,8 @@ textarea#input::placeholder { color: var(--muted); }
 .msg-foot { margin-top: 9px; }
 .msg-actions { top: 0; right: 0; }
 .msg.tool { margin-left: 2px; padding: 5px 0 5px 10px; }
+/* 时间线内的工具消息要保持与思考消息一致的位置，否则黄点会偏右偏离灰线 */
+.trace .msg.tool { margin-left: 0; padding: 3px 6px; }
 .trace { margin: 0 0 3px 8px; }
 
 .composer {

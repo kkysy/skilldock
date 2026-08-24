@@ -1,4 +1,4 @@
-import { loadState, saveState, exportBundle, importBundle, emptyState, DEFAULT_PROVIDERS } from "../shared/storage.js";
+import { loadState, saveState, exportBundle, importBundle, emptyState, DEFAULT_PROVIDERS, sortProviders } from "../shared/storage.js";
 import { listRemoteModels } from "../shared/providers.js";
 import { uid } from "../shared/utils.js";
 import { localizeDocument, normalizeLanguage, t } from "../shared/i18n.js";
@@ -13,7 +13,20 @@ const previewTheme = new URLSearchParams(location.search).get("theme");
 if (previewTheme) document.documentElement.dataset.theme = previewTheme;
 
 function showTab(id) {
-  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("hidden", t.id !== id));
+  document.querySelectorAll(".tab").forEach((t) => {
+    const show = t.id === id;
+    if (!show) {
+      t.classList.add("hidden");
+      return;
+    }
+    const wasHidden = t.classList.contains("hidden");
+    t.classList.remove("hidden");
+    if (wasHidden) {
+      t.classList.remove("tab-enter");
+      void t.offsetWidth;
+      t.classList.add("tab-enter");
+    }
+  });
   document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("on", b.dataset.tab === id));
 }
 
@@ -103,7 +116,7 @@ function setSkillMarkdownView(view) {
 }
 
 function renderProviders() {
-  $("providerList").innerHTML = state.providers
+  $("providerList").innerHTML = sortProviders(state.providers)
     .map(
       (p) => `<div class="card" data-id="${p.id}">
         <strong>${p.name}</strong>
@@ -176,6 +189,42 @@ function showSkillMsg(text) {
   }, 3000);
 }
 
+function currentSkillForm() {
+  return {
+    name: $("sName").value.trim(),
+    slash: $("sSlash").value.trim(),
+    desc: $("sDesc").value.trim(),
+    inst: $("sInst").value.trim(),
+    read: $("sRead").checked,
+    browser: $("sBrowser").checked,
+    search: $("sSearch").checked
+  };
+}
+
+function updateSkillSaveState() {
+  const btn = $("addSkill");
+  if (!editingSkillId) {
+    btn.disabled = false;
+    return;
+  }
+  const s = state.skills.find((x) => x.id === editingSkillId);
+  if (!s) {
+    btn.disabled = false;
+    return;
+  }
+  const base = {
+    name: s.name || "",
+    slash: s.slash || "",
+    desc: s.description || "",
+    inst: (s.instructions || "").trim(),
+    read: s.tools?.readPage !== false,
+    browser: !!s.tools?.browser,
+    search: !!s.tools?.webSearch
+  };
+  const cur = currentSkillForm();
+  btn.disabled = !Object.keys(cur).some((k) => cur[k] !== base[k]);
+}
+
 function editSkill(id) {
   const s = state.skills.find((x) => x.id === id);
   if (!s) return;
@@ -191,6 +240,7 @@ function editSkill(id) {
   $("addSkill").dataset.edit = s.id;
   $("addSkill").textContent = t("更新技能", language());
   $("skillFormTitle").textContent = t("编辑技能", language());
+  updateSkillSaveState();
   renderSkills();
 }
 
@@ -204,6 +254,7 @@ function resetSkillForm() {
   $("addSkill").dataset.edit = "";
   $("addSkill").textContent = t("保存技能", language());
   $("skillFormTitle").textContent = t("新建技能", language());
+  updateSkillSaveState();
   renderSkills();
 }
 
@@ -322,6 +373,9 @@ async function init() {
     $("sName").focus();
   });
 
+  ["sName", "sSlash", "sDesc", "sInst"].forEach((id) => $(id).addEventListener("input", updateSkillSaveState));
+  ["sRead", "sBrowser", "sSearch"].forEach((id) => $(id).addEventListener("change", updateSkillSaveState));
+
   $("addSkill").addEventListener("click", async () => {
     const name = $("sName").value.trim();
     if (!name) return;
@@ -343,6 +397,7 @@ async function init() {
       if (s) Object.assign(s, payload);
       await saveState(state);
       renderSkills();
+      updateSkillSaveState();
       showSkillMsg(t("技能已更新", language()));
     } else {
       state.skills.push({ id: uid("sk"), ...payload });

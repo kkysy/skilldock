@@ -4,7 +4,8 @@ import {
   findProvider,
   deleteConversation,
   newConversation,
-  upsertConversation
+  upsertConversation,
+  sortProviders
 } from "../shared/storage.js";
 import { renderMarkdown, conversationToMarkdown } from "../shared/markdown.js";
 import { uid, fileToDataUrl, fileToText, isImageFile, isTextFile } from "../shared/utils.js";
@@ -127,7 +128,7 @@ function updateModelPicker() {
   els.modelLabel.textContent = current;
   els.btnModel.title = language() === "en" ? `Current model: ${current}. Click to switch.` : `当前模型：${current}。点击切换`;
   const providerId = els.provider.value;
-  els.modelPickerBody.innerHTML = state.providers
+  els.modelPickerBody.innerHTML = sortProviders(state.providers)
     .map((p) => `<button class="provider-option ${p.id === providerId ? "selected" : ""}" type="button" data-provider="${escapeAttr(p.id)}">
       <span>${escapeAttr(p.name)}</span><span class="provider-option-meta">${p.id === providerId ? "✓" : ""}<span class="option-chevron">›</span></span>
     </button>`)
@@ -147,10 +148,9 @@ function openProviderModels(providerId) {
   const submenu = document.createElement("div");
   submenu.className = "model-submenu";
   submenu.dataset.provider = providerId;
-  submenu.innerHTML = `<div class="model-submenu-head"><span>${escapeAttr(provider.name)}</span><button type="button" aria-label="返回提供商列表">‹</button></div>${models.length
+  submenu.innerHTML = `<div class="model-submenu-head"><span>${escapeAttr(provider.name)}</span></div>${models.length
     ? models.map((m) => `<button class="model-option ${provider.id === els.provider.value && m === els.model.value ? "selected" : ""}" type="button" data-model="${escapeAttr(m)}"><span>${escapeAttr(m)}</span><span class="model-check">✓</span></button>`).join("")
     : `<div class="model-empty">${t("暂无模型，请在设置中添加或拉取", language())}</div>`}`;
-  submenu.querySelector(".model-submenu-head button").addEventListener("click", () => submenu.remove());
   submenu.querySelectorAll(".model-option").forEach((button) => {
     button.addEventListener("click", async () => {
       els.provider.value = provider.id;
@@ -162,17 +162,19 @@ function openProviderModels(providerId) {
     });
   });
   els.modelPicker.appendChild(submenu);
-  if (providerButton) {
-    const providerRect = providerButton.getBoundingClientRect();
-    const pickerRect = els.modelPicker.getBoundingClientRect();
-    const margin = 12;
-    const minHeight = 148;
-    const preferredTop = providerRect.top;
-    const top = Math.max(margin, Math.min(preferredTop, window.innerHeight - margin - minHeight));
-    const maxHeight = Math.max(minHeight, Math.min(320, window.innerHeight - top - margin));
-    submenu.style.top = `${Math.round(top - pickerRect.top)}px`;
-    submenu.style.maxHeight = `${Math.round(maxHeight)}px`;
-  }
+  // 先量出内容真实高度再定位：空间够就跟随当前供应商行向下展开；
+  // 不够时整体上移，但保证当前行始终落在菜单可视范围内（鼠标能直接右移进去）
+  const providerRect = providerButton?.getBoundingClientRect();
+  const pickerRect = els.modelPicker.getBoundingClientRect();
+  const margin = 12;
+  submenu.style.maxHeight = "none";
+  const natural = submenu.offsetHeight;
+  const height = Math.min(natural, window.innerHeight - margin * 2);
+  let top = providerRect ? providerRect.top - 4 : pickerRect.top;
+  top = Math.max(margin, top);
+  if (top + height > window.innerHeight - margin) top = Math.max(margin, window.innerHeight - margin - height);
+  submenu.style.top = `${Math.round(top - pickerRect.top)}px`;
+  submenu.style.maxHeight = `${Math.round(height)}px`;
 }
 
 function openModelPicker() {
@@ -595,7 +597,7 @@ function addMsgEl(m) {
   el.dataset.id = m.id;
   const shown = m.role === "user" && m.display != null ? m.display : m.content;
   const body = m.role === "assistant" ? renderMarkdown(shown || "") : escapeText(shown || "");
-  const content = `<div class="who">${roleLabel(m.role)}</div><div class="body">${body}</div>`;
+  const content = `${m.role === "user" ? "" : `<div class="who">${roleLabel(m.role)}</div>`}<div class="body">${body}</div>`;
   el.innerHTML = m.role === "user" ? `<div class="user-bubble">${content}</div>` : content;
   els.messages.appendChild(el);
   els.messages.scrollTop = els.messages.scrollHeight;
@@ -980,20 +982,25 @@ function showSlash(filter) {
     return;
   }
   showPopup(els.slash);
-  els.slash.innerHTML = skills
-    .map(
-      (s, i) =>
-        `<div class="${i === 0 ? "active" : ""}" data-id="${s.id}"><strong>/${s.slash || s.name}</strong> · ${s.description || ""}</div>`
-    )
-    .join("");
-  els.slash.querySelectorAll("div").forEach((d) => {
+  const clearOption = q
+    ? ""
+    : `<button class="skill-picker-option ${selectedSkillIds.length ? "" : "selected"}" type="button" role="option" data-id=""><strong>${t("清空技能", language())}</strong><small>${t("直接与模型对话", language())}</small></button>`;
+  els.slash.innerHTML =
+    clearOption +
+    skills
+      .map(
+        (s, i) =>
+          `<button class="skill-picker-option ${i === 0 ? "active" : ""} ${selectedSkillIds.includes(s.id) ? "selected" : ""}" type="button" role="option" aria-selected="${selectedSkillIds.includes(s.id)}" data-id="${escapeAttr(s.id)}"><strong>/${escapeAttr(s.slash || s.name)}</strong><small>${escapeAttr(s.description || s.name)}</small><span class="skill-picker-check">✓</span></button>`
+      )
+      .join("");
+  els.slash.querySelectorAll("[data-id]").forEach((d) => {
     d.addEventListener("click", () => pickSkill(d.dataset.id));
     d.addEventListener("mouseenter", () => setSlashActive(d));
   });
 }
 
 function setSlashActive(target) {
-  els.slash.querySelectorAll("div").forEach((d) => d.classList.toggle("active", d === target));
+  els.slash.querySelectorAll("[data-id]").forEach((d) => d.classList.toggle("active", d === target));
 }
 
 function moveSlashActive(delta) {
@@ -1010,7 +1017,11 @@ function hideSlash() {
 }
 
 function pickSkill(id) {
-  selectSkill(id, { focus: false });
+  if (id) selectSkill(id, { focus: false });
+  else {
+    selectedSkillIds = [];
+    updateSkillsAfterSelection({ focus: false });
+  }
   els.input.value = "";
   hideSlash();
   els.input.focus();
@@ -1114,6 +1125,7 @@ async function init() {
     if (!e.target.closest(".model-picker-wrap")) closeModelPicker();
     if (!e.target.closest(".composer-inline-row")) closeSkillPicker();
     if (!e.target.closest(".attachment-menu") && !e.target.closest("#btnAdd")) closeAttachmentMenu();
+    if (!e.target.closest("#history") && !e.target.closest("#btnHistory")) hidePopup(els.history);
   });
   $("btnSend").addEventListener("click", send);
   $("btnStop").addEventListener("click", () => ensurePort().postMessage({ type: "stop" }));
