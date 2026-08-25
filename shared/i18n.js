@@ -24,10 +24,20 @@ const COPY = {
     "添加到对话": "Add to conversation", "其他标签页": "Other tabs", "图片或文件": "Image or file", "选择其它标签页": "Choose other tabs",
     "每个网页旁的本地助手。API Key 只存在你的电脑上，没有订阅，也没有广告。": "A local assistant beside every page. Your API keys stay on your computer; no subscription or ads.",
     "今天想做什么？": "What would you like to do today?", "直接提问，或选择一个技能开始。你的密钥和对话只保存在本机。": "Ask directly, or choose a skill to get started. Your keys and chats stay on this device.",
-    "暂无模型，请在设置中添加或拉取": "No models yet. Add or fetch them in Settings.", "不使用技能": "No skill", "直接与模型对话": "Chat with the model directly", "你": "You", "助手": "Assistant", "工具": "Tool", "已复制": "Copied", "复制": "Copy", "复制失败": "Copy failed", "编辑": "Edit", "重生成": "Regenerate", "导出此回答为 Markdown": "Export this answer as Markdown", "正在编辑上一条消息": "Editing the previous message", "对话": "Chat", "未命名": "Untitled", "导出": "Export", "导出格式": "Export format", "导出为 TXT": "Export as TXT", "导出为 Markdown": "Export as Markdown", "导出为 PDF": "Export as PDF", "删除": "Delete", "还没有对话": "No conversations yet", "回到顶部": "Back to top", "过程": "Process",
+    "暂无模型，请在设置中添加或拉取": "No models yet. Add or fetch them in Settings.", "不使用技能": "No skill", "直接与模型对话": "Chat with the model directly", "你": "You", "助手": "Assistant", "工具": "Tool", "已复制": "Copied", "复制": "Copy", "复制失败": "Copy failed", "编辑": "Edit", "重生成": "Regenerate", "导出此回答为 Markdown": "Export this answer as Markdown", "正在编辑上一条消息": "Editing the previous message", "对话": "Chat", "未命名": "Untitled", "导出": "Export", "导出格式": "Export format", "导出为 TXT": "Export as TXT", "导出为 Markdown": "Export as Markdown", "导出为 PDF": "Export as PDF", "删除": "Delete", "还没有对话": "No conversations yet", "回到顶部": "Back to top", "回到底部": "Back to bottom", "过程": "Process",
     "拉取模型列表": "Fetch model list", "拉取中…": "Fetching…", "快捷": "Quick", "已禁用": "Disabled", "编辑技能": "Edit skill", "启用技能": "Enable skill", "禁用技能": "Disable skill", "启用": "Enable", "禁用": "Disable", "删除技能": "Delete skill", "还没有技能": "No skills yet", "更新技能": "Update skill", "技能已更新": "Skill updated", "技能已保存": "Skill saved", "导入完成": "Import complete",
     "斜杠命令": "Slash command", "简介": "Description", "如 DeepSeek": "e.g. DeepSeek", "例如：总结当前页": "e.g. Summarize this page", "例如：summarize": "e.g. summarize", "一句话说明技能用途": "Describe the skill in one sentence", "描述技能应该如何工作": "Describe how the skill should work", "敏捷的棕色狐狸跳过懒狗。The quick brown fox jumps over the lazy dog.": "The quick brown fox jumps over the lazy dog.", "把当前网页正文附加到问题": "Attach the current page text to your question", "让支持的模型先输出推理过程再作答": "Ask supported models to reason before answering", "切换模型": "Switch model", "选择要附加的标签页": "Choose tabs to attach", "没有可添加的其它标签页": "No other tabs can be added",
-    "模型发送的页面图片": "Page image sent by the model"
+    "模型发送的页面图片": "Page image sent by the model", "展开全部": "Show more", "收起": "Show less",
+    "正在工作": "Working",
+    "读取页面《{title}》": "Read page “{title}”", "读取页面": "Read page",
+    "阅读搜索结果《{title}》": "Read search result “{title}”", "阅读搜索结果": "Read search result",
+    "搜索“{query}”": "Searched “{query}”", "联网搜索": "Web search",
+    "列出 {n} 个标签页": "Listed {n} tabs", "提取 {n} 条页面链接": "Extracted {n} page links",
+    "在页面中搜索“{query}”": "Searched page for “{query}”", "在页面中搜索": "Searched page",
+    "打开新标签页": "Opened a new tab", "点击元素 {selector}": "Clicked {selector}", "点击页面元素": "Clicked a page element",
+    "填写元素 {selector}": "Filled {selector}", "填写页面元素": "Filled a page element", "滚动页面": "Scrolled the page",
+    "列出 {n} 张页面图片": "Listed {n} page images", "列出页面图片": "Listed page images", "发送页面图片": "Sent a page image",
+    "使用工具 {name}": "Used tool {name}", "使用工具 {name}（失败）": "Tool {name} failed"
   }
 };
 

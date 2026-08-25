@@ -181,6 +181,28 @@ select, textarea, input[type="text"], #historySearch {
 .msg.user .user-foot { opacity: 0; pointer-events: none; transition: opacity 0.15s; }
 .msg.user:hover .user-foot, .msg.user:focus-within .user-foot { opacity: 1; pointer-events: auto; }
 .msg.user .user-foot button { opacity: 1; }
+/* 大段用户消息折叠：限高 + 底部渐变遮罩，点击按钮展开/收起 */
+.msg.user .user-bubble { position: relative; }
+.user-bubble.collapsed .body {
+  max-height: 10.5em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 98%);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent 98%);
+}
+.user-toggle {
+  display: block;
+  margin: 6px auto 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.7857rem;
+  line-height: 1.4;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.user-toggle:hover { color: var(--text); background: var(--hover); }
 .message-time { color: var(--muted); font-size: 0.7857rem; white-space: nowrap; }
 .msg.assistant {
   align-self: stretch;
@@ -272,12 +294,86 @@ select, textarea, input[type="text"], #historySearch {
   font-size: 0.8571rem; /* 12px */
   color: var(--muted);
 }
+/* 等待首个响应的加载指示：经典放射状旋转图案（12 根辐条依次明暗） */
+.working {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 2px;
+  color: var(--muted);
+  font-size: 0.8571rem; /* 12px */
+}
+.spinner {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.spinner i {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 2px;
+  height: 5px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--muted);
+  transform-origin: 50% 8px;
+  animation: spinner-fade 1.2s linear infinite;
+}
+.spinner i:nth-child(1) { transform: rotate(0deg); animation-delay: -1.1s; }
+.spinner i:nth-child(2) { transform: rotate(30deg); animation-delay: -1s; }
+.spinner i:nth-child(3) { transform: rotate(60deg); animation-delay: -0.9s; }
+.spinner i:nth-child(4) { transform: rotate(90deg); animation-delay: -0.8s; }
+.spinner i:nth-child(5) { transform: rotate(120deg); animation-delay: -0.7s; }
+.spinner i:nth-child(6) { transform: rotate(150deg); animation-delay: -0.6s; }
+.spinner i:nth-child(7) { transform: rotate(180deg); animation-delay: -0.5s; }
+.spinner i:nth-child(8) { transform: rotate(210deg); animation-delay: -0.4s; }
+.spinner i:nth-child(9) { transform: rotate(240deg); animation-delay: -0.3s; }
+.spinner i:nth-child(10) { transform: rotate(270deg); animation-delay: -0.2s; }
+.spinner i:nth-child(11) { transform: rotate(300deg); animation-delay: -0.1s; }
+.spinner i:nth-child(12) { transform: rotate(330deg); animation-delay: 0s; }
+@keyframes spinner-fade {
+  from { opacity: 1; }
+  to { opacity: 0.12; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner i { animation: none; opacity: 0.55; }
+}
 .msg .who { font-size: 0.7857rem; /* 11px */ color: var(--muted); margin-bottom: 4px; }
 .msg.assistant .who { color: var(--accent); font-size: 0.8571rem; font-weight: 650; }
 .msg p { margin: 0.4em 0; }
+.msg h1, .msg h2, .msg h3, .msg h4, .msg h5, .msg h6 {
+  margin: 0.75em 0 0.35em;
+  color: var(--text-strong);
+  line-height: 1.25;
+}
+.msg h1 { font-size: 1.35rem; }
+.msg h2 { font-size: 1.2rem; }
+.msg h3 { font-size: 1.08rem; }
+.msg h4 { font-size: 1rem; }
+.msg h5 { font-size: 0.9286rem; }
+.msg h6 { font-size: 0.8571rem; color: var(--muted); }
 .msg ul, .msg ol { margin: 0.4em 0 0.4em 1.2em; padding: 0; }
 .msg table { width: 100%; border-collapse: collapse; font-size: 0.8571rem; }
 .msg td { border: 1px solid var(--border); padding: 4px 6px; }
+.msg blockquote {
+  margin: 0.55em 0;
+  padding: 0.15em 0 0.15em 0.75em;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
+.msg :not(pre) > code {
+  padding: 0.1em 0.35em;
+  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent-soft) 52%, var(--field));
+  color: var(--text-strong);
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.88em;
+  line-height: 1.35;
+}
+.msg del { color: var(--muted); text-decoration-thickness: 1px; }
 .msg .code {
   background: #0b0f14;
   color: #d6e4dc;
@@ -285,6 +381,10 @@ select, textarea, input[type="text"], #historySearch {
   padding: 8px;
   overflow: auto;
   font-size: 0.8571rem; /* 12px */
+}
+.msg .code code {
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  line-height: 1.55;
 }
 .code-lang { color: var(--gold); font-size: 0.7857rem; /* 11px */ margin-bottom: 4px; }
 .tool-card {
@@ -342,10 +442,14 @@ select, textarea, input[type="text"], #historySearch {
 }
 .trace[open] > summary::after { transform: rotate(90deg); }
 /* 展开/收起动画：Chromium 131+ 的 ::details-content 高度过渡，旧版本退化为瞬开瞬关 */
+/* 圆点定位在内容盒左侧 -16px 处（骑在竖线上），会被垂直裁剪误伤；
+   用 padding 外扩 18px 把水平裁剪边左移放行圆点，再用负 margin 拉回，内容位置与垂直裁剪均不变 */
 .trace::details-content {
   block-size: 0;
   opacity: 0;
   overflow: hidden;
+  padding-left: 18px;
+  margin-left: -18px;
   interpolate-size: allow-keywords;
   transition: block-size 0.25s ease, opacity 0.2s ease, content-visibility 0.25s allow-discrete;
 }
@@ -782,8 +886,8 @@ textarea#input::placeholder { color: var(--muted); }
   cursor: pointer;
 }
 
-/* 回到顶部悬浮钮 */
-.to-top {
+/* 回到顶部 / 回到底部悬浮钮 */
+.to-top, .to-bottom {
   position: absolute;
   right: 16px;
   bottom: 132px;
@@ -801,8 +905,11 @@ textarea#input::placeholder { color: var(--muted); }
   z-index: 3;
   transition: color 0.15s, transform 0.15s;
 }
-.to-top svg { width: 16px; height: 16px; display: block; }
-.to-top:hover { color: var(--text); transform: translateY(-2px); }
+.to-bottom { bottom: 88px; }
+.to-top svg, .to-bottom svg { width: 16px; height: 16px; display: block; }
+.to-top:hover, .to-bottom:hover { color: var(--text); }
+.to-top:hover { transform: translateY(-2px); }
+.to-bottom:hover { transform: translateY(2px); }
 
 /* 交互过渡与可访问性 */
 .icon-btn, .ghost, .primary, .hist, .chip button, .quick-skills button, .skill-picker-option, .tool-btn, .tool-toggle {
@@ -943,7 +1050,8 @@ textarea#input { min-height: 70px; padding: 7px 5px 4px; line-height: 1.55; }
 .stop-btn { flex: 0 0 auto; }
 .send-btn:disabled { background: color-mix(in srgb, var(--border) 78%, var(--field)); color: var(--muted); }
 .send-btn svg { width: 17px; height: 17px; }
-.to-top { right: 22px; bottom: 154px; border-radius: 10px; box-shadow: var(--shadow); }
+.to-top, .to-bottom { right: 22px; bottom: 154px; border-radius: 10px; box-shadow: var(--shadow); }
+.to-bottom { bottom: 110px; }
 
 @media (max-width: 390px) {
   .tool-toggle span { display: none; }

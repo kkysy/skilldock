@@ -8,7 +8,7 @@ import {
   sortProviders
 } from "../shared/storage.js";
 import { renderMarkdown, conversationToMarkdown } from "../shared/markdown.js";
-import { uid, fileToDataUrl, fileToText, isImageFile, isTextFile } from "../shared/utils.js";
+import { uid, fileToDataUrl, fileToText, isImageFile, isTextFile, safeJson, truncate } from "../shared/utils.js";
 import { isPdfFile, ingestPdf } from "../shared/pdf.js";
 import { localizeDocument, normalizeLanguage, t } from "../shared/i18n.js";
 
@@ -25,7 +25,8 @@ const ICONS = {
   markdown: `<svg ${SVG_ATTRS}><path d="M5 5h14v14H5z" /><path d="m8 15 2-6 2 4 2-4 2 6M8 18h8" /></svg>`,
   pdf: `<svg ${SVG_ATTRS}><path d="M6 3.5h9l3 3V20.5H6z" /><path d="M9 15h6M10 11h2a1.5 1.5 0 0 0 0-3H10zM14.5 8v4" /></svg>`,
   trash: `<svg ${SVG_ATTRS}><path d="M5 7h14M10 11v6M14 11v6M6.5 7l.8 13h9.4l.8-13M9 7V4h6v3" /></svg>`,
-  toTop: `<svg ${SVG_ATTRS}><path d="M5 4h14" /><path d="M12 20V9" /><path d="M6 14l6-6 6 6" /></svg>`
+  toTop: `<svg ${SVG_ATTRS}><path d="M5 4h14" /><path d="M12 20V9" /><path d="M6 14l6-6 6 6" /></svg>`,
+  toBottom: `<svg ${SVG_ATTRS}><path d="M5 20h14" /><path d="M12 4v11" /><path d="M6 10l6 6 6-6" /></svg>`
 };
 const els = {
   provider: $("provider"),
@@ -65,6 +66,8 @@ let attachments = [];
 let pendingPerm = null;
 let activeId = null;
 let editingMessageId = null;
+// 点击“编辑”后从聊天视图移除的消息节点（被编辑消息及其后的回复），取消编辑时恢复
+let editStashedNodes = null;
 // 本地刚发出、尚未拿到后台真实 id 的用户消息，用于就地更新避免整栏重渲染
 let pendingUser = null;
 let selectedSkillIds = [];
@@ -286,6 +289,7 @@ function connect() {
     port = null;
     streaming = false;
     setBusy(false);
+    hideWorking();
   });
 }
 
@@ -333,6 +337,24 @@ function roleLabel(role) {
   return "Skilldock";
 }
 
+// 底部跟踪：流式输出时只在用户没有向上滚动时才自动跟随到底部；
+// 用户滚离底部后保持其浏览位置，由「回到底部」悬浮钮恢复跟随
+const BOTTOM_THRESHOLD = 48;
+let stickToBottom = true;
+
+function isNearBottom() {
+  const m = els.messages;
+  return m.scrollHeight - m.scrollTop - m.clientHeight <= BOTTOM_THRESHOLD;
+}
+
+function scrollToBottom(behavior = "auto") {
+  els.messages.scrollTo({ top: els.messages.scrollHeight, behavior });
+}
+
+function maybeScrollToBottom() {
+  if (stickToBottom) scrollToBottom();
+}
+
 function renderConv(conv) {
   if (!conv || !conv.messages?.length) {
     emptyView();
@@ -340,13 +362,20 @@ function renderConv(conv) {
   }
   els.messages.innerHTML = "";
   const latestUserId = [...conv.messages].reverse().find((m) => m.role === "user" && !m.fromTool)?.id;
+  // 历史里的工具消息只存了结果文本；参数从前一条助手消息的 toolCalls 里找回，用于生成摘要
+  const toolArgs = {};
+  for (const m of conv.messages) {
+    if (m.role === "assistant" && m.toolCalls) {
+      for (const c of m.toolCalls) toolArgs[c.id] = safeJson(c.arguments) || {};
+    }
+  }
   for (const m of conv.messages) {
     if (m.role === "system") continue;
     if (m.role === "tool") {
       addMsgEl({
         id: m.id,
         role: "tool",
-        content: `${m.name} 完成：${String(m.content || "").slice(0, 120)}`
+        content: toolSummary(m.name, m.content, toolArgs[m.toolCallId])
       });
       continue;
     }
@@ -363,7 +392,8 @@ function renderConv(conv) {
     if (m.role === "assistant" && m.content && !m.toolCalls?.length) attachMsgFooter(el, m);
   }
   collapseTrace();
-  els.messages.scrollTop = els.messages.scrollHeight;
+  stickToBottom = true;
+  scrollToBottom();
 }
 
 function fmtElapsed(ms) {
@@ -463,11 +493,28 @@ function beginEdit(m) {
   els.input.setSelectionRange(els.input.value.length, els.input.value.length);
   const context = document.querySelector(".composer-context");
   if (context) context.innerHTML = `<span class="context-dot"></span>${t("正在编辑上一条消息", language())}`;
+  // 立刻从聊天视图移除被编辑的消息气泡及其后的回复；
+  // 发送时由后台真正截断会话，取消编辑时再把这些节点挂回去
+  const el = els.messages.querySelector(`[data-id="${m.id}"]`);
+  if (el) {
+    editStashedNodes = [];
+    let node = el;
+    while (node) {
+      const next = node.nextElementSibling;
+      editStashedNodes.push(node);
+      node.remove();
+      node = next;
+    }
+  }
   updateSendState();
 }
 
-function cancelEdit() {
+function cancelEdit({ restore = true } = {}) {
   editingMessageId = null;
+  if (restore && editStashedNodes) {
+    for (const node of editStashedNodes) els.messages.appendChild(node);
+  }
+  editStashedNodes = null;
   const context = document.querySelector(".composer-context");
   if (context) context.innerHTML = `<span class="context-dot"></span>${t("准备好开始对话", language())}`;
   updateSendState();
@@ -492,6 +539,7 @@ async function regenerate(messageId) {
   conv.messages = conv.messages.slice(0, uidx + 1);
   renderConv(conv);
   setBusy(true);
+  showWorking();
   let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   ensurePort().postMessage({
@@ -588,7 +636,7 @@ function addToolImageCard(id, images) {
   el.appendChild(cap);
   appendImages(el, images);
   els.messages.appendChild(el);
-  els.messages.scrollTop = els.messages.scrollHeight;
+  maybeScrollToBottom();
   return el;
 }
 
@@ -601,8 +649,33 @@ function addMsgEl(m) {
   const content = `${m.role === "user" ? "" : `<div class="who">${roleLabel(m.role)}</div>`}<div class="body">${body}</div>`;
   el.innerHTML = m.role === "user" ? `<div class="user-bubble">${content}</div>` : content;
   els.messages.appendChild(el);
-  els.messages.scrollTop = els.messages.scrollHeight;
+  if (m.role === "user") setupUserCollapse(el);
+  maybeScrollToBottom();
   return el;
+}
+
+// 大段用户消息自动折叠：超过阈值高度的气泡默认收起，带渐变遮罩和展开/收起按钮
+const USER_COLLAPSE_THRESHOLD = 220;
+
+function setupUserCollapse(el) {
+  const bubble = el.querySelector(".user-bubble");
+  const body = bubble?.querySelector(".body");
+  if (!bubble || !body || body.scrollHeight <= USER_COLLAPSE_THRESHOLD) return;
+  bubble.classList.add("collapsed");
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "user-toggle";
+  const syncLabel = () => {
+    toggle.textContent = bubble.classList.contains("collapsed")
+      ? `▾ ${t("展开全部", language())}`
+      : `▴ ${t("收起", language())}`;
+  };
+  toggle.addEventListener("click", () => {
+    bubble.classList.toggle("collapsed");
+    syncLabel();
+  });
+  syncLabel();
+  bubble.appendChild(toggle);
 }
 
 function escapeText(s) {
@@ -617,7 +690,7 @@ function upsertById(id, role, html) {
   if (!el) el = addMsgEl({ id, role, content: "" });
   if (role === "assistant") el.classList.add("streaming");
   el.querySelector(".body").innerHTML = html;
-  els.messages.scrollTop = els.messages.scrollHeight;
+  maybeScrollToBottom();
   return el;
 }
 
@@ -663,6 +736,68 @@ function collapseTrace(root = els.messages) {
   flush();
 }
 
+// 等待模型首个响应期间的加载指示：经典放射状旋转图案 + 文案，
+// 让用户知道正在工作而不是卡住了；首个 delta/思考/工具事件到达时移除
+function showWorking() {
+  if (els.messages.querySelector(".working")) return;
+  if (els.messages.querySelector(".empty")) els.messages.innerHTML = "";
+  const el = document.createElement("div");
+  el.className = "working";
+  el.setAttribute("role", "status");
+  el.innerHTML = `<span class="spinner" aria-hidden="true">${"<i></i>".repeat(12)}</span><span class="working-text">${t("正在工作", language())}…</span>`;
+  els.messages.appendChild(el);
+  maybeScrollToBottom();
+}
+
+function hideWorking() {
+  els.messages.querySelector(".working")?.remove();
+}
+
+// 工具调用的一句话摘要：从工具名/参数/结果里提取关键信息，
+// 而不是把原始结果暴力截断后丢给用户
+function toolSummary(name, content, args) {
+  const text = String(content || "");
+  const a = args || {};
+  const grab = (re) => (text.match(re)?.[1] || "").trim();
+  const countLines = (re) => text.split("\n").filter((l) => re.test(l.trim())).length;
+  const sel = a.selector ? truncate(String(a.selector), 40) : "";
+  if (/^(工具失败|未知工具|已拒绝)/.test(text)) return t("使用工具 {name}（失败）", language(), { name });
+  switch (name) {
+    case "read_page": {
+      const title = grab(/^页面：(.+)$/m);
+      return title ? t("读取页面《{title}》", language(), { title }) : t("读取页面", language());
+    }
+    case "read_search_result": {
+      const title = grab(/^搜索结果页面：(.+)$/m);
+      return title ? t("阅读搜索结果《{title}》", language(), { title }) : t("阅读搜索结果", language());
+    }
+    case "web_search":
+      return a.query ? t("搜索“{query}”", language(), { query: truncate(String(a.query), 60) }) : t("联网搜索", language());
+    case "list_tabs":
+      return t("列出 {n} 个标签页", language(), { n: countLines(/^- \[/) });
+    case "extract_links":
+      return t("提取 {n} 条页面链接", language(), { n: countLines(/^- /) });
+    case "search_page":
+      return a.query ? t("在页面中搜索“{query}”", language(), { query: truncate(String(a.query), 60) }) : t("在页面中搜索", language());
+    case "open_tab":
+      return t("打开新标签页", language());
+    case "click_element":
+      return sel ? t("点击元素 {selector}", language(), { selector: sel }) : t("点击页面元素", language());
+    case "fill_element":
+      return sel ? t("填写元素 {selector}", language(), { selector: sel }) : t("填写页面元素", language());
+    case "scroll_page":
+      return t("滚动页面", language());
+    case "list_page_images": {
+      const n = countLines(/^\[\d+\]/);
+      return n ? t("列出 {n} 张页面图片", language(), { n }) : t("列出页面图片", language());
+    }
+    case "send_page_image":
+      return t("发送页面图片", language());
+    default:
+      return t("使用工具 {name}", language(), { name });
+  }
+}
+
 function onPort(msg) {
   if (msg.type === "conversation") {
     activeId = msg.conversation.id;
@@ -685,6 +820,8 @@ function onPort(msg) {
       pendingUser = null;
       renderConv(msg.conversation);
     }
+    // renderConv 会清空消息区，会话仍在等待首个响应时补回加载指示
+    if (streaming) showWorking();
   }
   if (msg.type === "assistant_start") {
     streamBuf.id = msg.id;
@@ -696,11 +833,13 @@ function onPort(msg) {
     if (els.messages.querySelector(".empty")) els.messages.innerHTML = "";
   }
   if (msg.type === "delta") {
+    hideWorking();
     const id = ensureSegment();
     streamBuf.text += msg.text;
     upsertById(id, "assistant", renderMarkdown(streamBuf.text));
   }
   if (msg.type === "thinking") {
+    hideWorking();
     const id = ensureSegment();
     streamBuf.thinking += msg.text;
     upsertById(`think-${id}`, "think", escapeText(streamBuf.thinking));
@@ -713,6 +852,7 @@ function onPort(msg) {
   if (msg.type === "tool") {
     streamBuf.afterTools = true;
     if (msg.cached) return;
+    hideWorking();
     if (els.messages.querySelector(".empty")) els.messages.innerHTML = "";
     let el = els.messages.querySelector(`[data-tool-id="${msg.id}"]`);
     if (!el) {
@@ -722,12 +862,13 @@ function onPort(msg) {
     const text =
       msg.status === "running"
         ? (language() === "en" ? `Calling ${msg.name}…` : `正在调用 ${msg.name}…`)
-        : (language() === "en" ? `${msg.name} completed: ${String(msg.result || "").slice(0, 220)}` : `${msg.name} 完成：${String(msg.result || "").slice(0, 220)}`);
+        : toolSummary(msg.name, msg.result, safeJson(msg.args));
     el.querySelector(".body").textContent = text;
-    els.messages.scrollTop = els.messages.scrollHeight;
+    maybeScrollToBottom();
   }
   if (msg.type === "toolimg") {
     streamBuf.afterTools = true;
+    hideWorking();
     addToolImageCard(msg.id, msg.images);
   }
   if (msg.type === "permission") {
@@ -737,6 +878,7 @@ function onPort(msg) {
   }
   if (msg.type === "done" || msg.type === "stopped") {
     setBusy(false);
+    hideWorking();
     collapseTrace();
     els.messages.querySelectorAll(".streaming").forEach((e) => e.classList.remove("streaming"));
     if (msg.conversation) {
@@ -755,6 +897,7 @@ function onPort(msg) {
   }
   if (msg.type === "error") {
     setBusy(false);
+    hideWorking();
     els.messages.querySelectorAll(".streaming").forEach((e) => e.classList.remove("streaming"));
     const el = document.createElement("div");
     el.className = "msg error";
@@ -844,14 +987,16 @@ async function send() {
   }
   if (els.messages.querySelector(".empty")) els.messages.innerHTML = "";
   const localUser = { id: uid("u"), role: "user", content: text, display: displayText, createdAt: Date.now() };
+  stickToBottom = true;
   const localEl = addMsgEl(localUser);
   attachUserFooter(localEl, localUser, true);
   pendingUser = { id: localUser.id, text: displayText };
   els.input.value = "";
   updateSendState();
   hideSlash();
-  cancelEdit();
+  cancelEdit({ restore: false });
   setBusy(true);
+  showWorking();
   let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   ensurePort().postMessage({
@@ -1179,8 +1324,22 @@ async function init() {
   toTop.setAttribute("aria-label", t("回到顶部", language()));
   toTop.addEventListener("click", () => els.messages.scrollTo({ top: 0, behavior: "smooth" }));
   $("app").appendChild(toTop);
+  // 回到底部悬浮钮：用户向上滚动浏览时解除底部跟随，点此恢复
+  const toBottom = document.createElement("button");
+  toBottom.type = "button";
+  toBottom.className = "to-bottom hidden";
+  toBottom.innerHTML = ICONS.toBottom;
+  toBottom.title = t("回到底部", language());
+  toBottom.setAttribute("aria-label", t("回到底部", language()));
+  toBottom.addEventListener("click", () => {
+    stickToBottom = true;
+    scrollToBottom("smooth");
+  });
+  $("app").appendChild(toBottom);
   els.messages.addEventListener("scroll", () => {
+    stickToBottom = isNearBottom();
     toTop.classList.toggle("hidden", els.messages.scrollTop < 300);
+    toBottom.classList.toggle("hidden", stickToBottom);
   });
   $("permAllow").addEventListener("click", () => {
     ensurePort().postMessage({ type: "permission_result", id: pendingPerm, allowed: true });

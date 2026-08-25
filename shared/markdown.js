@@ -130,6 +130,7 @@ function inline(text) {
   s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  s = s.replace(/~~([^~]+)~~/g, "<del>$1</del>");
   s = s.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
   return s;
 }
@@ -218,7 +219,35 @@ export function renderMarkdown(src) {
         inTable = false;
       }
     };
-    for (const line of lines) {
+    const renderIndentedCode = (codeLines) => {
+      const code = codeLines.map((line) => line.replace(/^(?: {4}|\t)/, "")).join("\n").replace(/\n$/, "");
+      html += `<pre class="code"><code>${escapeHtml(code)}</code></pre>`;
+    };
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex];
+      // Markdown's four-space / tab code blocks are grouped before trimming so
+      // indentation is not mistaken for ordinary paragraph whitespace.
+      if (/^(?: {4}|\t)/.test(line)) {
+        closeLists();
+        closeTable();
+        const codeLines = [line];
+        while (lineIndex + 1 < lines.length) {
+          const next = lines[lineIndex + 1];
+          if (/^(?: {4}|\t)/.test(next)) {
+            codeLines.push(next);
+            lineIndex++;
+            continue;
+          }
+          if (!next.trim() && lineIndex + 2 < lines.length && /^(?: {4}|\t)/.test(lines[lineIndex + 2])) {
+            codeLines.push(next);
+            lineIndex++;
+            continue;
+          }
+          break;
+        }
+        renderIndentedCode(codeLines);
+        continue;
+      }
       const t = line.trim();
       if (!t) {
         closeLists();
@@ -244,7 +273,7 @@ export function renderMarkdown(src) {
       } else {
         closeTable();
       }
-      const h = t.match(/^(#{1,3})\s+(.*)$/);
+      const h = t.match(/^(#{1,6})\s+(.*)$/);
       if (h) {
         closeLists();
         const n = h[1].length;
