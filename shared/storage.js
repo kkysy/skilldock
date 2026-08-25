@@ -159,6 +159,7 @@ export function emptyState() {
       webSearchEnabled: true,
       readPageByDefault: true,
       thinkingDefault: false,
+      contextTokenLimit: 200000,
       disabledSites: [],
       systemPrompt: "你是 Skilldock，一个运行在用户浏览器里的本地助手。优先依据用户提供的页面、附件和技能说明作答。不要假装能访问用户没给你的内容。用用户的语言回答。",
       providerId: "openai",

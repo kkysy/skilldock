@@ -74,6 +74,13 @@
             <option value="new">新开对话</option>
           </select>
         </div>
+        <div class="item">
+          <div class="item-main">
+            <span class="item-title">上下文限制</span>
+            <span class="item-desc">按估算 token 计算。超过限制时，较早对话会自动压缩为摘要；原始聊天记录会保留在本地。</span>
+          </div>
+          <input id="contextTokenLimit" class="inline numeric-setting" type="number" min="16000" max="2000000" step="1000" inputmode="numeric" aria-label="上下文限制（token）" />
+        </div>
       </div>
 
       <div class="group">

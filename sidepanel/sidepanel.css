@@ -937,6 +937,44 @@ textarea#input::placeholder { color: var(--muted); }
 .top-actions { gap: 3px; }
 .icon-btn { width: 31px; height: 31px; border-radius: 8px; color: var(--muted); }
 .icon-btn:hover { color: var(--text); background: var(--hover); }
+.context-meter-wrap { position: relative; }
+.context-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 48px;
+  height: 31px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: .7143rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.context-trigger:hover, .context-trigger[aria-expanded="true"] { color: var(--text); background: var(--hover); }
+.context-trigger svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.context-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(270px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+.context-popover-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.context-popover-head strong { font-size: .8571rem; }
+.context-popover-head span { color: var(--accent); font-size: .7857rem; font-variant-numeric: tabular-nums; }
+.context-progress { height: 6px; margin: 10px 0 7px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--border) 82%, transparent); }
+.context-progress span { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width .2s ease; }
+.context-usage-text { color: var(--text); font-size: .7857rem; font-variant-numeric: tabular-nums; }
+.context-popover p { margin: 7px 0 0; color: var(--muted); font-size: .7143rem; line-height: 1.45; }
 
 .messages {
   gap: 18px;

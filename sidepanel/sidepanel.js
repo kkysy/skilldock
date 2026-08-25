@@ -32,6 +32,12 @@ const els = {
   provider: $("provider"),
   model: $("model"),
   modelLabel: $("modelLabel"),
+  btnContext: $("btnContext"),
+  contextPopover: $("contextPopover"),
+  contextTriggerValue: $("contextTriggerValue"),
+  contextPercent: $("contextPercent"),
+  contextProgress: $("contextProgress"),
+  contextUsageText: $("contextUsageText"),
   btnModel: $("btnModel"),
   modelPicker: $("modelPicker"),
   modelPickerBody: $("modelPickerBody"),
@@ -72,6 +78,8 @@ let editStashedNodes = null;
 let pendingUser = null;
 let selectedSkillIds = [];
 let historyExportId = null;
+let composerLocked = false;
+let contextUsage = null;
 const popupTimers = new WeakMap();
 
 function language() {
@@ -300,13 +308,55 @@ function ensurePort() {
 
 function setBusy(on) {
   streaming = on;
+  if (!on) setComposerLocked(false);
   els.btnSend.classList.toggle("hidden", on);
   els.btnStop.classList.toggle("hidden", !on);
   updateSendState();
 }
 
+function compactTokenCount(value) {
+  const count = Math.max(0, Number(value) || 0);
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(count % 1_000_000 ? 1 : 0)}m`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(count % 1_000 ? 1 : 0)}k`;
+  return String(Math.round(count));
+}
+
+function renderContextUsage(usage = contextUsage) {
+  contextUsage = usage || null;
+  const limit = Math.max(1, Number(state?.settings?.contextTokenLimit) || Number(contextUsage?.limit) || 200000);
+  const tokens = Math.max(0, Number(contextUsage?.estimatedTokens) || 0);
+  const percent = Math.min(100, Math.max(0, Number(contextUsage?.percent) || (tokens / limit * 100)));
+  const label = `${compactTokenCount(tokens)} / ${compactTokenCount(limit)} tokens`;
+  const percentage = `${percent < 1 && tokens ? percent.toFixed(1) : Math.round(percent)}%`;
+  els.contextTriggerValue.textContent = percentage;
+  els.contextPercent.textContent = percentage;
+  els.contextProgress.style.width = `${percent}%`;
+  els.contextUsageText.textContent = label;
+  const title = language() === "en" ? `Context: ${label} (${percentage})` : `上下文：${label}（${percentage}）`;
+  els.btnContext.title = title;
+  els.btnContext.setAttribute("aria-label", title);
+}
+
+function openContextPopover() {
+  renderContextUsage();
+  showPopup(els.contextPopover);
+  els.btnContext.setAttribute("aria-expanded", "true");
+}
+
+function closeContextPopover() {
+  hidePopup(els.contextPopover);
+  els.btnContext.setAttribute("aria-expanded", "false");
+}
+
+function setComposerLocked(on) {
+  composerLocked = on;
+  els.input.disabled = on;
+  els.btnAdd.disabled = on;
+  updateSendState();
+}
+
 function updateSendState() {
-  els.btnSend.disabled = streaming || (!els.input.value.trim() && !selectedSkillIds.length);
+  els.btnSend.disabled = composerLocked || streaming || (!els.input.value.trim() && !selectedSkillIds.length);
 }
 
 function emptyView() {
@@ -356,6 +406,7 @@ function maybeScrollToBottom() {
 }
 
 function renderConv(conv) {
+  renderContextUsage(conv?.contextUsage || null);
   if (!conv || !conv.messages?.length) {
     emptyView();
     return;
@@ -738,13 +789,17 @@ function collapseTrace(root = els.messages) {
 
 // 等待模型首个响应期间的加载指示：经典放射状旋转图案 + 文案，
 // 让用户知道正在工作而不是卡住了；首个 delta/思考/工具事件到达时移除
-function showWorking() {
-  if (els.messages.querySelector(".working")) return;
+function showWorking(label = t("正在工作", language())) {
+  const existing = els.messages.querySelector(".working");
+  if (existing) {
+    existing.querySelector(".working-text").textContent = `${label}…`;
+    return;
+  }
   if (els.messages.querySelector(".empty")) els.messages.innerHTML = "";
   const el = document.createElement("div");
   el.className = "working";
   el.setAttribute("role", "status");
-  el.innerHTML = `<span class="spinner" aria-hidden="true">${"<i></i>".repeat(12)}</span><span class="working-text">${t("正在工作", language())}…</span>`;
+  el.innerHTML = `<span class="spinner" aria-hidden="true">${"<i></i>".repeat(12)}</span><span class="working-text">${label}…</span>`;
   els.messages.appendChild(el);
   maybeScrollToBottom();
 }
@@ -799,7 +854,12 @@ function toolSummary(name, content, args) {
 }
 
 function onPort(msg) {
+  if (msg.type === "compacting") {
+    setComposerLocked(true);
+    showWorking(t("正在压缩上下文", language()));
+  }
   if (msg.type === "conversation") {
+    if (msg.contextUsage) renderContextUsage(msg.contextUsage);
     activeId = msg.conversation.id;
     state.activeConversationId = activeId;
     const i = state.conversations.findIndex((c) => c.id === activeId);
@@ -824,6 +884,8 @@ function onPort(msg) {
     if (streaming) showWorking();
   }
   if (msg.type === "assistant_start") {
+    setComposerLocked(false);
+    showWorking();
     streamBuf.id = msg.id;
     streamBuf.seq = 0;
     streamBuf.elId = null;
@@ -882,6 +944,7 @@ function onPort(msg) {
     collapseTrace();
     els.messages.querySelectorAll(".streaming").forEach((e) => e.classList.remove("streaming"));
     if (msg.conversation) {
+      if (msg.conversation.contextUsage) renderContextUsage(msg.conversation.contextUsage);
       const i = state.conversations.findIndex((c) => c.id === msg.conversation.id);
       if (i >= 0) state.conversations[i] = msg.conversation;
       activeId = msg.conversation.id;
@@ -1225,6 +1288,7 @@ function newChat() {
   cancelEdit();
   extraTabs = [];
   attachments = [];
+  renderContextUsage(null);
   renderChips();
   emptyView();
 }
@@ -1247,6 +1311,7 @@ async function init() {
   connect();
   const conv = state.conversations.find((c) => c.id === activeId);
   renderConv(conv);
+  renderContextUsage(conv?.contextUsage || null);
   renderHistory();
 
   $("btnNew").addEventListener("click", newChat);
@@ -1255,6 +1320,10 @@ async function init() {
     else hidePopup(els.history);
   });
   $("btnSettings").addEventListener("click", () => chrome.runtime.openOptionsPage());
+  els.btnContext.addEventListener("click", () => {
+    if (els.contextPopover.classList.contains("hidden")) openContextPopover();
+    else closeContextPopover();
+  });
   els.btnModel.addEventListener("click", () => {
     if (els.modelPicker.classList.contains("hidden")) openModelPicker();
     else closeModelPicker();
@@ -1280,6 +1349,7 @@ async function init() {
     if (!e.target.closest(".composer-inline-row")) closeSkillPicker();
     if (!e.target.closest(".attachment-menu") && !e.target.closest("#btnAdd")) closeAttachmentMenu();
     if (!e.target.closest("#history") && !e.target.closest("#btnHistory")) hidePopup(els.history);
+    if (!e.target.closest(".context-meter-wrap")) closeContextPopover();
   });
   $("btnSend").addEventListener("click", send);
   $("btnStop").addEventListener("click", () => ensurePort().postMessage({ type: "stop" }));
@@ -1305,14 +1375,18 @@ async function init() {
   els.historySearch.addEventListener("input", renderHistory);
   chrome.storage.onChanged.addListener((changes, area) => {
     const next = changes.skilldock_v1?.newValue;
-    if (area !== "local" || !next?.settings || next.settings.language === state.settings.language) return;
+    if (area !== "local" || !next?.settings) return;
+    const languageChanged = next.settings.language !== state.settings.language;
     state.settings = { ...state.settings, ...next.settings };
     applyTheme();
-    localizeDocument(language());
-    fillProviders();
-    fillSkills();
-    renderConv(state.conversations.find((c) => c.id === activeId));
-    renderHistory();
+    renderContextUsage(contextUsage ? { ...contextUsage, limit: state.settings.contextTokenLimit, percent: undefined } : null);
+    if (languageChanged) {
+      localizeDocument(language());
+      fillProviders();
+      fillSkills();
+      renderConv(state.conversations.find((c) => c.id === activeId));
+      renderHistory();
+    }
   });
 
   // 回到顶部悬浮钮：长对话滚离顶部后出现

@@ -55,6 +55,7 @@ function fillGeneral() {
   $("webSearchEnabled").checked = s.webSearchEnabled !== false;
   $("readPageByDefault").checked = s.readPageByDefault;
   $("thinkingDefault").checked = !!s.thinkingDefault;
+  $("contextTokenLimit").value = Math.max(16000, Number(s.contextTokenLimit) || 200000);
   $("disabledSites").value = (s.disabledSites || []).join("\n");
   $("systemPrompt").value = s.systemPrompt || "";
 }
@@ -70,6 +71,7 @@ function readGeneralSettings() {
     webSearchEnabled: $("webSearchEnabled").checked,
     readPageByDefault: $("readPageByDefault").checked,
     thinkingDefault: $("thinkingDefault").checked,
+    contextTokenLimit: Math.min(2000000, Math.max(16000, Number($("contextTokenLimit").value) || 200000)),
     disabledSites: $("disabledSites").value.split("\n").map((s) => s.trim()).filter(Boolean),
     systemPrompt: $("systemPrompt").value
   };
@@ -329,7 +331,7 @@ async function init() {
     scheduleGeneralSave();
   });
   $("fontSize").addEventListener("change", saveGeneralSettings);
-  $("sidepanelStartup").addEventListener("change", saveGeneralSettings);
+  ["sidepanelStartup", "contextTokenLimit"].forEach((id) => $(id).addEventListener("change", saveGeneralSettings));
   ["selectionToolbar", "browserControl", "webSearchEnabled", "readPageByDefault", "thinkingDefault"].forEach((id) => {
     $(id).addEventListener("change", saveGeneralSettings);
   });

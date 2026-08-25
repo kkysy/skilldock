@@ -70,6 +70,9 @@ const PAGE_CHUNK_CHARS = 10000;
 const MAX_INITIAL_PAGE_CHARS = 10000;
 const MAX_TOTAL_PAGE_CHARS = 30000;
 const MAX_SEARCH_RESULT_BYTES = 1_500_000;
+const DEFAULT_CONTEXT_TOKEN_LIMIT = 200_000;
+const MIN_CONTEXT_TOKEN_LIMIT = 16_000;
+const MAX_CONTEXT_TOKEN_LIMIT = 2_000_000;
 
 function send(port, msg) {
   try {
@@ -662,6 +665,180 @@ async function collectContext(tabId, extraTabIds = [], cache) {
   return { blocks };
 }
 
+function contextTokenLimit(value) {
+  const limit = Number(value);
+  if (!Number.isFinite(limit)) return DEFAULT_CONTEXT_TOKEN_LIMIT;
+  return Math.min(MAX_CONTEXT_TOKEN_LIMIT, Math.max(MIN_CONTEXT_TOKEN_LIMIT, Math.floor(limit)));
+}
+
+// This deliberately favors a conservative estimate for CJK text, where one
+// character often maps to more than one model token. It is a trigger for
+// compaction, not a billing or provider-reported token count.
+export function estimateTextTokens(value) {
+  const text = String(value || "");
+  const cjk = (text.match(/[\u3000-\u303f\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
+  return Math.ceil(cjk * 1.5 + (text.length - cjk) / 4);
+}
+
+function estimateMessageTokens(message) {
+  if (!message) return 0;
+  let tokens = 8 + estimateTextTokens(message.content);
+  tokens += estimateTextTokens(message.thinking);
+  tokens += estimateTextTokens(message.name);
+  if (message.toolCalls?.length) tokens += estimateTextTokens(JSON.stringify(message.toolCalls));
+  // Images cannot be measured without the provider tokenizer. This modest
+  // reserve prevents a text-only estimate from treating them as free context.
+  if (message.images?.length) tokens += message.images.length * 1200;
+  return tokens;
+}
+
+function estimateMessagesTokens(messages) {
+  return (messages || []).reduce((total, message) => total + estimateMessageTokens(message), 0);
+}
+
+function contextUsageFor({ conv, systemContent, toolNames, limit }) {
+  const toolTokens = estimateTextTokens(JSON.stringify(TOOL_DEFS.filter((tool) => toolNames.includes(tool.name))));
+  const estimatedTokens =
+    estimateTextTokens(systemContent) +
+    estimateTextTokens(conv.compaction?.summary) +
+    estimateMessagesTokens(conv.messages.filter((message) => !message.compacted)) +
+    toolTokens;
+  return {
+    estimatedTokens,
+    limit,
+    percent: Math.min(100, estimatedTokens / Math.max(1, limit) * 100)
+  };
+}
+
+function messageForModel(message) {
+  return {
+    role: message.role,
+    content: message.content,
+    // fromTool 图片只在注入的那一轮请求里可见（roundMessages 直传），
+    // 后续轮次从模型输入剔除以省 token；用户手动附件保持每轮可见
+    images: message.fromTool ? undefined : message.images,
+    toolCalls: message.toolCalls,
+    toolCallId: message.toolCallId,
+    name: message.name,
+    thinking: message.thinking,
+    thinkingSignature: message.thinkingSignature
+  };
+}
+
+function turnsForCompaction(messages) {
+  const turns = [];
+  let current = [];
+  for (const message of messages) {
+    // A regular user message starts a turn. Tool-injected user images remain
+    // with the tool round that produced them, preserving provider message order.
+    if (message.role === "user" && !message.fromTool && current.length) {
+      turns.push(current);
+      current = [];
+    }
+    current.push(message);
+  }
+  if (current.length) turns.push(current);
+  return turns;
+}
+
+function summarySource(messages) {
+  return messages.map((message) => {
+    const role = message.role === "assistant" ? "助手" : message.role === "tool" ? `工具 ${message.name || ""}` : "用户";
+    const parts = [message.content || ""];
+    if (message.thinking) parts.push(`思考过程：${message.thinking}`);
+    if (message.toolCalls?.length) parts.push(`工具调用：${JSON.stringify(message.toolCalls)}`);
+    if (message.images?.length) parts.push(`附带图片：${message.images.length} 张（图片本身不会进入摘要）`);
+    return `${role}：\n${parts.filter(Boolean).join("\n")}`;
+  }).join("\n\n---\n\n");
+}
+
+async function createConversationSummary({ provider, model, summary, messages, signal, limit }) {
+  const targetTokens = Math.min(12000, Math.max(1500, Math.floor(limit * 0.06)));
+  const prompt = [
+    "请把下面较早的对话压缩成可供后续助手继续工作的上下文摘要。",
+    "保留：用户目标和偏好、已确认事实、关键数据与原文引用、未完成任务、重要结论、代码/文件/链接、工具调用结果。",
+    "不要编造；忽略寒暄和重复内容。按主题用紧凑 Markdown 输出，控制在约 " + targetTokens + " tokens 内。",
+    summary ? `已有历史摘要（请合并并更新它）：\n${summary}` : "",
+    `待压缩的原始消息：\n${summarySource(messages)}`
+  ].filter(Boolean).join("\n\n");
+  let text = "";
+  for await (const event of streamChat({
+    provider,
+    model,
+    messages: [{ role: "user", content: prompt }],
+    toolNames: [],
+    thinking: false,
+    signal
+  })) {
+    if (event.type === "text") text += event.text;
+  }
+  if (!text.trim()) throw new Error("模型未返回对话摘要");
+  return text.trim();
+}
+
+function clearConversationCompaction(conv) {
+  if (!conv.compaction && !conv.messages.some((message) => message.compacted)) return;
+  delete conv.compaction;
+  conv.messages.forEach((message) => delete message.compacted);
+}
+
+export async function compactConversation({ conv, systemContent, toolNames, provider, model, signal, limit, onStart }) {
+  const estimate = () => contextUsageFor({ conv, systemContent, toolNames, limit }).estimatedTokens;
+  if (estimate() <= limit) return false;
+  onStart?.();
+
+  const keepBudget = Math.max(4000, Math.floor(limit * 0.35));
+  const sourceBudget = Math.max(4000, Math.floor(limit * 0.45));
+  let compacted = false;
+
+  // Compress in bounded chunks. This keeps the summarization request below
+  // the same configured limit even when a conversation has grown far beyond it.
+  for (let pass = 0; pass < 8 && estimate() > limit; pass++) {
+    const turns = turnsForCompaction(conv.messages.filter((message) => !message.compacted));
+    if (turns.length < 2) break;
+
+    const keep = [];
+    let keptTokens = 0;
+    for (let i = turns.length - 1; i >= 0; i--) {
+      const turnTokens = estimateMessagesTokens(turns[i]);
+      if (keep.length && keptTokens + turnTokens > keepBudget) break;
+      keep.unshift(...turns[i]);
+      keptTokens += turnTokens;
+    }
+    const keepIds = new Set(keep.map((message) => message.id));
+    const candidates = conv.messages.filter((message) => !message.compacted && !keepIds.has(message.id));
+    if (!candidates.length) break;
+
+    const batch = [];
+    let batchTokens = estimateTextTokens(conv.compaction?.summary);
+    for (const message of candidates) {
+      const messageTokens = estimateMessageTokens(message);
+      if (batch.length && batchTokens + messageTokens > sourceBudget) break;
+      batch.push(message);
+      batchTokens += messageTokens;
+    }
+    if (!batch.length) break;
+
+    const nextSummary = await createConversationSummary({
+      provider,
+      model,
+      summary: conv.compaction?.summary || "",
+      messages: batch,
+      signal,
+      limit
+    });
+    batch.forEach((message) => { message.compacted = true; });
+    conv.compaction = {
+      summary: nextSummary,
+      updatedAt: Date.now(),
+      compressedMessages: conv.messages.filter((message) => message.compacted).length
+    };
+    compacted = true;
+  }
+
+  return compacted;
+}
+
 async function handleChat(port, req) {
   const state = await loadState();
   const settings = state.settings;
@@ -699,6 +876,7 @@ async function handleChat(port, req) {
     const eidx = conv.messages.findIndex((m) => m.id === req.editMessageId && m.role === "user");
     if (eidx < 0) throw new Error("找不到要编辑的消息");
     conv.messages.length = eidx;
+    clearConversationCompaction(conv);
   }
 
   // 重生成：删掉目标回答及其后的所有消息（含它前面的那条提问，提问会由下方正常管线重新追加）
@@ -711,6 +889,7 @@ async function handleChat(port, req) {
     }
     if (uidx < 0) throw new Error("这条回答前面没有提问，无法重生成");
     conv.messages.length = uidx;
+    clearConversationCompaction(conv);
   }
 
   const images = (req.attachments || [])
@@ -770,25 +949,31 @@ async function handleChat(port, req) {
   if (toolNames.includes("send_page_image")) {
     systemParts.push("页面图片：默认不随用户消息发送，页面上下文里只列出了图片的名称/URL。若问题涉及页面上的图片、或需要向用户展示某张图片，先调用 list_page_images 获取图片列表（序号、描述、尺寸），再调用 send_page_image 传入序号或图片 URL；发送后图片会出现在对话中，你也能直接看到图片内容。");
   }
+  const systemContent = systemParts.filter(Boolean).join("\n\n");
+  const limit = contextTokenLimit(settings.contextTokenLimit);
+  await compactConversation({
+    conv,
+    systemContent,
+    toolNames,
+    provider,
+    model,
+    signal: sessions.get(port)?.abort.signal,
+    limit,
+    onStart: () => send(port, { type: "compacting" })
+  });
+  conv.contextUsage = contextUsageFor({ conv, systemContent, toolNames, limit });
   const llmMessages = [
-    { role: "system", content: systemParts.filter(Boolean).join("\n\n") },
-    ...conv.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-      // fromTool 图片只在注入的那一轮请求里可见（roundMessages 直传），
-      // 后续轮次从模型输入剔除以省 token；用户手动附件保持每轮可见
-      images: m.fromTool ? undefined : m.images,
-      toolCalls: m.toolCalls,
-      toolCallId: m.toolCallId,
-      name: m.name,
-      thinking: m.thinking,
-      thinkingSignature: m.thinkingSignature
-    }))
+    { role: "system", content: systemContent },
+    ...(conv.compaction?.summary ? [{
+      role: "system",
+      content: `以下是已压缩的较早对话。将其作为事实与待办背景；若与近期原文冲突，以近期原文为准。\n\n${conv.compaction.summary}`
+    }] : []),
+    ...conv.messages.filter((message) => !message.compacted).map(messageForModel)
   ];
 
   const assistantId = uid("msg");
   const t0 = Date.now();
-  send(port, { type: "conversation", conversation: conv });
+  send(port, { type: "conversation", conversation: conv, contextUsage: conv.contextUsage });
   send(port, { type: "assistant_start", id: assistantId });
 
   let full = "";
@@ -972,6 +1157,7 @@ async function handleChat(port, req) {
   conv.model = model;
   conv.skillId = skill?.id || null;
   conv.skillIds = skills.map((item) => item.id);
+  conv.contextUsage = contextUsageFor({ conv, systemContent, toolNames, limit });
   await upsertConversation(conv);
   send(port, { type: "done", id: assistantId, conversation: conv });
 }
