@@ -487,6 +487,25 @@ async function fetchSearchResultPage(rawUrl) {
 
 const RISK_TOOLS = new Set(["click_element", "fill_element", "open_tab"]);
 
+// URL 规范化比较：忽略末尾斜杠与 hash 差异，避免同一页面因细微差别被重复打开
+function sameTabUrl(a, b) {
+  if (!a || !b) return false;
+  const norm = (u) => String(u).split("#")[0].replace(/\/+$/, "");
+  return norm(a) === norm(b);
+}
+
+async function findTabByUrl(url) {
+  const all = await chrome.tabs.query({ currentWindow: true });
+  return all.find((t) => sameTabUrl(t.url, url)) || null;
+}
+
+async function activateTab(tab) {
+  await chrome.tabs.update(tab.id, { active: true });
+  try {
+    await chrome.windows.update(tab.windowId, { focused: true });
+  } catch {}
+}
+
 async function runTool(name, args, ctx) {
   if (name === "web_search" && !ctx.webSearchEnabled) {
     return "联网搜索已在设置中关闭。请根据已有页面上下文作答。";
@@ -535,8 +554,24 @@ async function runTool(name, args, ctx) {
     }
     case "open_tab": {
       if (!args.url) return "缺少 url";
+      const existing = await findTabByUrl(args.url);
+      if (existing) {
+        await activateTab(existing);
+        return `该页面已打开，已切换到标签页 [${existing.id}] ${existing.title || ""} — ${existing.url}`;
+      }
       await chrome.tabs.create({ url: args.url, active: false });
       return `已打开 ${args.url}`;
+    }
+    case "switch_tab": {
+      let target = null;
+      const tid = Number(args.tabId);
+      if (Number.isFinite(tid) && tid > 0) {
+        target = await chrome.tabs.get(tid).catch(() => null);
+      }
+      if (!target && args.url) target = await findTabByUrl(args.url);
+      if (!target?.id) return "未找到目标标签页。先用 list_tabs 查看当前打开的标签页及其 id。";
+      await activateTab(target);
+      return `已切换到标签页 [${target.id}] ${target.title || ""} — ${target.url || ""}`;
     }
     case "click_element": {
       const r = await callTab(tabId, { type: "CLICK", selector: args.selector });
@@ -611,7 +646,7 @@ function toolNamesFor(settings, skills = []) {
   const canSearchWeb = settings.webSearchEnabled !== false && allows("webSearch", true);
   if (canSearchWeb) names.push("web_search", "read_search_result");
   if (settings.browserControl && allows("browser", settings.browserControl)) {
-    names.push("click_element", "fill_element", "scroll_page", "open_tab");
+    names.push("click_element", "fill_element", "scroll_page", "open_tab", "switch_tab");
   }
   return [...new Set(names)];
 }
@@ -945,6 +980,9 @@ async function handleChat(port, req) {
   }
   if (toolNames.includes("read_search_result")) {
     systemParts.push("联网检索后，如需依据某个结果页回答，应调用 read_search_result 并传入 web_search 返回的 URL；它会直接返回网页正文，不要为读取内容而调用 open_tab。若结果有后续内容，使用其 nextStart 继续读取。");
+  }
+  if (toolNames.includes("switch_tab")) {
+    systemParts.push("标签页操作：要操作某个已打开但未激活的标签页时，先用 list_tabs 找到它的 id，再用 switch_tab 激活它；读取已打开页面的内容也可以直接在 read_page 等工具中传入 tabId。不要为已打开的页面重复调用 open_tab。");
   }
   if (toolNames.includes("send_page_image")) {
     systemParts.push("页面图片：默认不随用户消息发送，页面上下文里只列出了图片的名称/URL。若问题涉及页面上的图片、或需要向用户展示某张图片，先调用 list_page_images 获取图片列表（序号、描述、尺寸），再调用 send_page_image 传入序号或图片 URL；发送后图片会出现在对话中，你也能直接看到图片内容。");

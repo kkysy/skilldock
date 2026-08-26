@@ -57,7 +57,7 @@
 | 收集当前页/附加标签页上下文 | `collectContext` |
 | 联网搜索（DuckDuckGo） | `webSearch` / `fetchSearchResultPage` |
 | 网页正文/图片提取（注入页面执行） | `extractPageFn` / `listImagesFn` / `getImageFn` |
-| 浏览器操作工具（点击/填写/滚动/搜页面） | `clickFn` / `fillFn` / `scrollFn` / `searchPageFn` |
+| 浏览器操作工具（点击/填写/滚动/打开/切换标签页） | `clickFn` / `fillFn` / `scrollFn` / `searchPageFn`；`open_tab`/`switch_tab` 在 `runTool`，标签页查找/激活在 `findTabByUrl` / `activateTab` |
 | 右键菜单（总结页面等） | 顶部 `chrome.contextMenus.create` |
 | 点图标/Alt+S 打开侧边栏 | `enablePanel` / `queueContextAction` |
 
@@ -109,6 +109,6 @@
 - **加一句界面文案**：写中文，英文翻译加到 `shared/i18n.js` 的 `COPY.en`。
 - **改气泡样式/颜色**：`sidepanel/sidepanel.css`（主题变量在文件顶部 `:root`）。
 - **改发给模型的 prompt/上下文**：`background/sw.js` 的 `collectContext` 和 `handleChat`。
-- **加一个智能体工具**：`background/sw.js` 的 `runTool` + `toolNamesFor`，页面侧操作加到 `content/content.js`。
+- **加一个智能体工具**：`shared/providers.js` 的 `TOOL_DEFS`（定义参数）+ `background/sw.js` 的 `runTool` + `toolNamesFor`，页面侧操作加到 `content/content.js`。
 - **改默认技能**：`shared/storage.js` 的 `defaultSkills`。
 - **加模型服务商类型**：`shared/providers.js`。

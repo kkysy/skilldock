@@ -63,11 +63,22 @@ export const TOOL_DEFS = [
   },
   {
     name: "open_tab",
-    description: "Open a URL in a new tab.",
+    description: "Open a URL in a tab. If a tab with this URL is already open, it is activated instead of opening a duplicate.",
     parameters: {
       type: "object",
       properties: { url: { type: "string" } },
       required: ["url"]
+    }
+  },
+  {
+    name: "switch_tab",
+    description: "Activate (bring to front) an already-open tab, identified by tabId from list_tabs or by URL. Use this instead of open_tab when the page is already open.",
+    parameters: {
+      type: "object",
+      properties: {
+        tabId: { type: "number", description: "Tab id from list_tabs." },
+        url: { type: "string", description: "URL of the tab to activate." }
+      }
     }
   },
   {

@@ -35,7 +35,8 @@ const COPY = {
     "搜索“{query}”": "Searched “{query}”", "联网搜索": "Web search",
     "列出 {n} 个标签页": "Listed {n} tabs", "提取 {n} 条页面链接": "Extracted {n} page links",
     "在页面中搜索“{query}”": "Searched page for “{query}”", "在页面中搜索": "Searched page",
-    "打开新标签页": "Opened a new tab", "点击元素 {selector}": "Clicked {selector}", "点击页面元素": "Clicked a page element",
+    "打开新标签页": "Opened a new tab", "切换到标签页《{title}》": "Switched to tab “{title}”", "切换标签页": "Switched tab",
+    "点击元素 {selector}": "Clicked {selector}", "点击页面元素": "Clicked a page element",
     "填写元素 {selector}": "Filled {selector}", "填写页面元素": "Filled a page element", "滚动页面": "Scrolled the page",
     "列出 {n} 张页面图片": "Listed {n} page images", "列出页面图片": "Listed page images", "发送页面图片": "Sent a page image",
     "使用工具 {name}": "Used tool {name}", "使用工具 {name}（失败）": "Tool {name} failed"

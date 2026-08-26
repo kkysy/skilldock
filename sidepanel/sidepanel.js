@@ -836,6 +836,10 @@ function toolSummary(name, content, args) {
       return a.query ? t("在页面中搜索“{query}”", language(), { query: truncate(String(a.query), 60) }) : t("在页面中搜索", language());
     case "open_tab":
       return t("打开新标签页", language());
+    case "switch_tab": {
+      const title = grab(/^已切换到标签页 \[\d+\] (.+?) — /m);
+      return title ? t("切换到标签页《{title}》", language(), { title }) : t("切换标签页", language());
+    }
     case "click_element":
       return sel ? t("点击元素 {selector}", language(), { selector: sel }) : t("点击页面元素", language());
     case "fill_element":
