@@ -984,6 +984,7 @@ async function handleChat(port, req) {
   let roundMessages = llmMessages;
   const failedTools = new Set();
   let usedTools = false;
+  let lastUsage = null;
 
   async function consumeStream(names) {
     roundThinking = "";
@@ -1008,6 +1009,9 @@ async function handleChat(port, req) {
         roundSig = ev.signature;
       } else if (ev.type === "tool_calls") {
         toolCalls = ev.calls || [];
+      } else if (ev.type === "usage") {
+        // 多轮工具循环会多次请求，最后一次的 prompt 才覆盖完整上下文，覆盖即可
+        lastUsage = ev.usage;
       }
     }
     return toolCalls;
@@ -1148,7 +1152,8 @@ async function handleChat(port, req) {
     content: full,
     thinking,
     createdAt: Date.now(),
-    elapsedMs: Date.now() - t0
+    elapsedMs: Date.now() - t0,
+    usage: lastUsage || undefined
   });
   if (conv.title === "新对话" || conv.title.length < 8) {
     conv.title = (req.text || conv.title).replace(/\s+/g, " ").slice(0, 36) || conv.title;
@@ -1158,6 +1163,12 @@ async function handleChat(port, req) {
   conv.skillId = skill?.id || null;
   conv.skillIds = skills.map((item) => item.id);
   conv.contextUsage = contextUsageFor({ conv, systemContent, toolNames, limit });
+  // 服务商返回的真实用量优先于本地字符估算：prompt 即本次请求的实际上下文大小
+  if (lastUsage) {
+    conv.contextUsage.actualTokens = lastUsage.prompt;
+    conv.contextUsage.cachedTokens = lastUsage.cached || 0;
+    conv.contextUsage.completionTokens = lastUsage.completion;
+  }
   await upsertConversation(conv);
   send(port, { type: "done", id: assistantId, conversation: conv });
 }

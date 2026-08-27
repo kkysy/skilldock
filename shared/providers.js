@@ -236,7 +236,9 @@ async function* streamOpenAI({ provider, model, messages, toolNames, thinking, s
   const body = {
     model,
     messages: toOpenAIMessages(messages),
-    stream: true
+    stream: true,
+    // 让上游在流末尾返回 usage（含 cached_tokens）；缺省时 Gemini 渠道不回 usage，中转站统计不到缓存命中
+    stream_options: { include_usage: true }
   };
   const tools = openaiTools(toolNames);
   if (tools.length) {
@@ -276,6 +278,17 @@ async function* streamOpenAI({ provider, model, messages, toolNames, thinking, s
   }
   const toolAcc = {};
   for await (const ev of iterateSSE(res)) {
+    if (ev.usage) {
+      yield {
+        type: "usage",
+        usage: {
+          prompt: ev.usage.prompt_tokens,
+          completion: ev.usage.completion_tokens,
+          cached: ev.usage.prompt_tokens_details?.cached_tokens || 0
+        }
+      };
+      continue;
+    }
     const choice = ev.choices?.[0];
     const delta = choice?.delta || {};
     if (delta.content) yield { type: "text", text: delta.content };
@@ -387,7 +400,16 @@ async function* streamAnthropic({ provider, model, messages, toolNames, thinking
   let currentTool = null;
   let thinkSig = "";
   const calls = [];
+  const usageAcc = {};
   for await (const ev of iterateSSE(res)) {
+    if (ev.type === "message_start" && ev.message?.usage) {
+      const u = ev.message.usage;
+      usageAcc.prompt = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+      usageAcc.cached = u.cache_read_input_tokens || 0;
+    }
+    if (ev.type === "message_delta" && ev.usage) {
+      usageAcc.completion = ev.usage.output_tokens;
+    }
     if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
       currentTool = { id: ev.content_block.id, name: ev.content_block.name, arguments: "" };
     }
@@ -410,6 +432,9 @@ async function* streamAnthropic({ provider, model, messages, toolNames, thinking
     if (ev.type === "message_delta" && ev.delta?.stop_reason === "tool_use") {
       yield { type: "tool_calls", calls };
     }
+  }
+  if (usageAcc.prompt != null || usageAcc.completion != null) {
+    yield { type: "usage", usage: { prompt: usageAcc.prompt, completion: usageAcc.completion, cached: usageAcc.cached || 0 } };
   }
 }
 
@@ -474,6 +499,16 @@ async function* streamGemini({ provider, model, messages, toolNames, thinking, s
     throw new Error(`${provider.name} ${res.status}: ${err.slice(0, 500)}`);
   }
   for await (const ev of iterateSSE(res)) {
+    if (ev.usageMetadata) {
+      yield {
+        type: "usage",
+        usage: {
+          prompt: ev.usageMetadata.promptTokenCount,
+          completion: (ev.usageMetadata.candidatesTokenCount || 0) + (ev.usageMetadata.thoughtsTokenCount || 0),
+          cached: ev.usageMetadata.cachedContentTokenCount || 0
+        }
+      };
+    }
     const cand = ev.candidates?.[0];
     const parts = cand?.content?.parts || [];
     const calls = [];
