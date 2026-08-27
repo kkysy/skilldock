@@ -324,15 +324,22 @@ function compactTokenCount(value) {
 function renderContextUsage(usage = contextUsage) {
   contextUsage = usage || null;
   const limit = Math.max(1, Number(state?.settings?.contextTokenLimit) || Number(contextUsage?.limit) || 200000);
-  const tokens = Math.max(0, Number(contextUsage?.estimatedTokens) || 0);
-  const percent = Math.min(100, Math.max(0, Number(contextUsage?.percent) || (tokens / limit * 100)));
-  const label = `${compactTokenCount(tokens)} / ${compactTokenCount(limit)} tokens`;
+  // 服务商实测用量（actualTokens）优先；未拿到时退回本地字符估算
+  const actual = Math.max(0, Number(contextUsage?.actualTokens) || 0);
+  const estimated = Math.max(0, Number(contextUsage?.estimatedTokens) || 0);
+  const tokens = actual || estimated;
+  const percent = Math.min(100, Math.max(0, actual ? (tokens / limit * 100) : (Number(contextUsage?.percent) || (tokens / limit * 100))));
+  const isEn = language() === "en";
+  let label = `${compactTokenCount(tokens)} / ${compactTokenCount(limit)} tokens`;
+  if (actual) label += isEn ? " (actual)" : "（实测）";
   const percentage = `${percent < 1 && tokens ? percent.toFixed(1) : Math.round(percent)}%`;
   els.contextTriggerValue.textContent = percentage;
   els.contextPercent.textContent = percentage;
   els.contextProgress.style.width = `${percent}%`;
   els.contextUsageText.textContent = label;
-  const title = language() === "en" ? `Context: ${label} (${percentage})` : `上下文：${label}（${percentage}）`;
+  let title = isEn ? `Context: ${label} (${percentage})` : `上下文：${label}（${percentage}）`;
+  const cached = Math.max(0, Number(contextUsage?.cachedTokens) || 0);
+  if (cached) title += isEn ? `\nCache hit: ${compactTokenCount(cached)} tokens` : `\n缓存命中：${compactTokenCount(cached)} tokens`;
   els.btnContext.title = title;
   els.btnContext.setAttribute("aria-label", title);
 }
@@ -511,6 +518,17 @@ function attachMsgFooter(el, m) {
     t.className = "elapsed";
     t.textContent = fmtElapsed(m.elapsedMs);
     row.appendChild(t);
+  }
+  if (m.usage && (m.usage.prompt != null || m.usage.completion != null)) {
+    const s = document.createElement("span");
+    s.className = "elapsed";
+    let txt = `↑${compactTokenCount(m.usage.prompt)} ↓${compactTokenCount(m.usage.completion)}`;
+    if (m.usage.cached) txt += language() === "en" ? ` · cached ${compactTokenCount(m.usage.cached)}` : ` · 缓存 ${compactTokenCount(m.usage.cached)}`;
+    s.textContent = txt;
+    s.title = language() === "en"
+      ? `Actual usage: input ${m.usage.prompt ?? "?"}, output ${m.usage.completion ?? "?"}${m.usage.cached ? `, cache hit ${m.usage.cached}` : ""} tokens`
+      : `真实用量：输入 ${m.usage.prompt ?? "?"}，输出 ${m.usage.completion ?? "?"}${m.usage.cached ? `，缓存命中 ${m.usage.cached}` : ""} tokens`;
+    row.appendChild(s);
   }
   const mk = (icon, label, fn) => {
     const b = document.createElement("button");
