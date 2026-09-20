@@ -187,6 +187,23 @@ function geminiTools(names) {
   return fns.length ? [{ functionDeclarations: fns }] : [];
 }
 
+function sleepWithAbort(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      const err = new Error("Aborted");
+      err.name = "AbortError";
+      reject(err);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 async function* iterateSSE(response) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -267,21 +284,33 @@ async function* streamOpenAI({ provider, model, messages, toolNames, thinking, s
   async function post() {
     return fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal });
   }
+  // 429 多为上游全局并发池瞬时打满（如 StepFun step-5-preview 的 scene-global 限制），
+  // 与本地请求量无关，指数退避重试几次通常即可穿过；重试耗尽仍按原样抛错
+  async function postWithRetry() {
+    let delay = 800;
+    for (let attempt = 0; ; attempt++) {
+      const res = await post();
+      if (res.status !== 429 || attempt >= 3) return res;
+      await res.text().catch(() => {});
+      await sleepWithAbort(delay, signal);
+      delay *= 2;
+    }
+  }
   let res;
   if (thinking) {
     // 非推理模型（如 gpt-4o）会拒绝 reasoning_effort，此时降级重试一次
     body.reasoning_effort = "medium";
-    res = await post();
+    res = await postWithRetry();
     if (!res.ok) {
       const err = await res.text();
       if (!/reasoning/i.test(err)) {
         throw new Error(`${provider.name} ${res.status}: ${err.slice(0, 500)}`);
       }
       delete body.reasoning_effort;
-      res = await post();
+      res = await postWithRetry();
     }
   } else {
-    res = await post();
+    res = await postWithRetry();
   }
   if (!res.ok) {
     const err = await res.text();
@@ -289,6 +318,8 @@ async function* streamOpenAI({ provider, model, messages, toolNames, thinking, s
   }
   const toolAcc = {};
   for await (const ev of iterateSSE(res)) {
+    // 不 continue：部分供应商（如 StepFun step_plan）在每个 chunk 都附带 usage，跳过会吞掉正文；
+    // 只在末尾发 usage 的供应商其末尾 chunk choices 为空，下方 delta 分支自然跳过，无副作用
     if (ev.usage) {
       yield {
         type: "usage",
@@ -298,7 +329,6 @@ async function* streamOpenAI({ provider, model, messages, toolNames, thinking, s
           cached: ev.usage.prompt_tokens_details?.cached_tokens || 0
         }
       };
-      continue;
     }
     const choice = ev.choices?.[0];
     const delta = choice?.delta || {};
