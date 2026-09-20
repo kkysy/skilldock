@@ -250,6 +250,13 @@ export function renderMarkdown(src) {
       }
       const t = line.trim();
       if (!t) {
+        // 空行后紧跟同类型列表项时视为松散列表（模型常在条目间加空行），保持列表打开；
+        // 否则每个条目会各自成一个新的 <ol>，编号全部从 1 重新开始
+        let j = lineIndex + 1;
+        while (j < lines.length && !lines[j].trim()) j++;
+        const next = j < lines.length ? lines[j].trim() : "";
+        if (inOl && /^\d+\.\s+/.test(next)) continue;
+        if (inUl && /^[-*]\s+/.test(next)) continue;
         closeLists();
         closeTable();
         continue;
@@ -292,7 +299,9 @@ export function renderMarkdown(src) {
       if (/^\d+\.\s+/.test(t)) {
         if (!inOl) {
           closeLists();
-          html += "<ol>";
+          // 保留模型给出的起始编号（如从 3 续编），否则浏览器一律从 1 渲染
+          const startNum = parseInt(t, 10);
+          html += startNum > 1 ? `<ol start="${startNum}">` : "<ol>";
           inOl = true;
         }
         html += `<li>${inline(t.replace(/^\d+\.\s+/, ""))}</li>`;
