@@ -970,6 +970,9 @@ async function handleChat(port, req) {
     images,
     createdAt: Date.now()
   });
+  // 先落盘再开始流式：若本轮请求失败（429 重试耗尽、网络错误、压缩摘要失败等），
+  // 这条用户消息也已持久化，后续按 id 编辑重发才不会报“找不到要编辑的消息”
+  await upsertConversation(conv);
 
   const systemParts = [settings.systemPrompt || ""];
   skills.forEach((item) => {
@@ -1182,6 +1185,13 @@ async function handleChat(port, req) {
       return;
     }
     throw err;
+  }
+
+  // 上游偶发 HTTP 200 但 0 token 的空响应（如 StepFun 新模型瞬时故障）：
+  // 补一条明确提示而非空白气泡，避免被误认为扩展故障；done 不重渲染气泡，故需同步 delta 给 UI
+  if (!full.trim() && !thinking.trim() && !usedTools) {
+    full = "（模型返回了空响应，可能是上游瞬时故障，请稍后重试）";
+    send(port, { type: "delta", id: assistantId, text: full });
   }
 
   conv.messages.push({
