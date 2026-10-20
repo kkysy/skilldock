@@ -406,9 +406,9 @@ async function callTab(tabId, message) {
   return { ok: false, error: "无法访问此页面。若刚重新加载了扩展，请先刷新这个网页。" };
 }
 
-async function webSearch(query) {
+async function webSearch(query, signal) {
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 Skilldock" } });
+  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 Skilldock" }, signal });
   const html = await res.text();
   const results = [];
   const snippets = [...html.matchAll(/class="result__snippet"[^>]*>([\s\S]*?)<\/(?:a|div)>/gi)]
@@ -456,13 +456,13 @@ async function readResponseText(response, maxBytes) {
   return text + decoder.decode();
 }
 
-async function fetchSearchResultPage(rawUrl) {
+async function fetchSearchResultPage(rawUrl, signal) {
   let current = rawUrl;
   for (let redirectCount = 0; redirectCount <= 3; redirectCount++) {
     if (!isSafePublicHttpUrl(current)) return { error: "只允许读取公开 HTTP(S) 网页，已拒绝本机、私有地址或非常规端口。" };
     let response;
     try {
-      response = await fetch(current, { credentials: "omit", redirect: "manual", referrerPolicy: "no-referrer" });
+      response = await fetch(current, { credentials: "omit", redirect: "manual", referrerPolicy: "no-referrer", signal });
     } catch (error) {
       return { error: `读取搜索结果失败：${error.message}` };
     }
@@ -499,18 +499,22 @@ async function findTabByUrl(url) {
   return all.find((t) => sameTabUrl(t.url, url)) || null;
 }
 
-async function activateTab(tab) {
+async function activateTab(tab, signal) {
+  checkAbort(signal);
   await chrome.tabs.update(tab.id, { active: true });
+  checkAbort(signal);
   try {
     await chrome.windows.update(tab.windowId, { focused: true });
   } catch {}
 }
 
 async function runTool(name, args, ctx) {
+  checkAbort(ctx.signal);
   if (name === "web_search" && !ctx.webSearchEnabled) {
     return "联网搜索已在设置中关闭。请根据已有页面上下文作答。";
   }
   const tab = await getTab(ctx.tabId);
+  checkAbort(ctx.signal);
   const tabId = args.tabId || tab?.id;
   const resolved = canonicalToolName(name);
   switch (resolved) {
@@ -555,8 +559,9 @@ async function runTool(name, args, ctx) {
     case "open_tab": {
       if (!args.url) return "缺少 url";
       const existing = await findTabByUrl(args.url);
+      checkAbort(ctx.signal);
       if (existing) {
-        await activateTab(existing);
+        await activateTab(existing, ctx.signal);
         return `该页面已打开，已切换到标签页 [${existing.id}] ${existing.title || ""} — ${existing.url}`;
       }
       await chrome.tabs.create({ url: args.url, active: false });
@@ -570,7 +575,8 @@ async function runTool(name, args, ctx) {
       }
       if (!target && args.url) target = await findTabByUrl(args.url);
       if (!target?.id) return "未找到目标标签页。先用 list_tabs 查看当前打开的标签页及其 id。";
-      await activateTab(target);
+      checkAbort(ctx.signal);
+      await activateTab(target, ctx.signal);
       return `已切换到标签页 [${target.id}] ${target.title || ""} — ${target.url || ""}`;
     }
     case "click_element": {
@@ -608,7 +614,7 @@ async function runTool(name, args, ctx) {
       };
     }
     case "web_search": {
-      const results = await webSearch(args.query || "");
+      const results = await webSearch(args.query || "", ctx.signal);
       if (!results.length) return "没有搜索结果";
       return results.map((r, i) => `${i + 1}. ${r.title}\n${r.url}${r.snippet ? `\n摘要：${r.snippet}` : ""}`).join("\n\n");
     }
@@ -623,7 +629,7 @@ async function runTool(name, args, ctx) {
       const cacheKey = `search-result:${url}`;
       let page = ctx.cache?.get(cacheKey);
       if (!page) {
-        page = await fetchSearchResultPage(url);
+        page = await fetchSearchResultPage(url, ctx.signal);
         if (!page.error) ctx.cache?.set(cacheKey, page);
       }
       if (page.error) return page.error;
@@ -651,31 +657,56 @@ function toolNamesFor(settings, skills = []) {
   return [...new Set(names)];
 }
 
-function waitPermission(port, call) {
-  return new Promise((resolve) => {
-    const id = call.id;
-    const timer = setTimeout(() => resolve(false), 120000);
-    const handler = (msg) => {
-      if (msg.type !== "permission_result" || msg.id !== id) return;
+function checkAbort(signal) {
+  if (signal?.aborted) throw new DOMException("已停止", "AbortError");
+}
+
+// Chrome API 已发出的操作不能撤回；取消后立即退出等待，不再执行后续步骤。
+function withAbort(promise, signal) {
+  checkAbort(signal);
+  return new Promise((resolve, reject) => {
+    const onAbort = () => finish(reject, new DOMException("已停止", "AbortError"));
+    const finish = (settle, value) => {
+      signal?.removeEventListener("abort", onAbort);
+      settle(value);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(promise).then((value) => finish(resolve, value), (error) => finish(reject, error));
+  });
+}
+
+function waitPermission(port, call, signal) {
+  checkAbort(signal);
+  return new Promise((resolve, reject) => {
+    const finish = (allowed, error) => {
       clearTimeout(timer);
       port.onMessage.removeListener(handler);
-      resolve(!!msg.allowed);
+      signal?.removeEventListener("abort", onAbort);
+      if (error) reject(error);
+      else resolve(allowed);
     };
+    const onAbort = () => finish(false, new DOMException("已停止", "AbortError"));
+    const handler = (msg) => {
+      if (msg.type === "permission_result" && msg.id === call.id) finish(!!msg.allowed);
+    };
+    const timer = setTimeout(() => finish(false), 120000);
     port.onMessage.addListener(handler);
+    signal?.addEventListener("abort", onAbort, { once: true });
     send(port, {
       type: "permission",
-      id,
+      id: call.id,
       name: call.name,
       args: safeJson(call.arguments) || {}
     });
   });
 }
 
-async function collectContext(tabId, extraTabIds = [], cache) {
+async function collectContext(tabId, extraTabIds = [], cache, signal) {
   const blocks = [];
   let remaining = MAX_TOTAL_PAGE_CHARS;
   const ids = [...new Set([tabId, ...extraTabIds].filter(Boolean))];
   for (const id of ids) {
+    checkAbort(signal);
     const page = await callTab(id, {
       type: "EXTRACT_PAGE",
       start: 0,
@@ -749,9 +780,8 @@ function messageForModel(message) {
   return {
     role: message.role,
     content: message.content,
-    // fromTool 图片只在注入的那一轮请求里可见（roundMessages 直传），
-    // 后续轮次从模型输入剔除以省 token；用户手动附件保持每轮可见
-    images: message.fromTool ? undefined : message.images,
+    // 未压缩的工具图片与普通附件一样保留，“继续”仍可看到原图。
+    images: message.images,
     toolCalls: message.toolCalls,
     toolCallId: message.toolCallId,
     name: message.name,
@@ -776,6 +806,23 @@ function turnsForCompaction(messages) {
   return turns;
 }
 
+// 单个 turn 太长时允许按助手轮分组；tool_calls、全部结果和图片始终在同一组。
+function groupsForCompaction(messages) {
+  const groups = [];
+  for (const turn of turnsForCompaction(messages)) {
+    let group = [];
+    for (const message of turn) {
+      if (message.role === "assistant" && group.length) {
+        groups.push(group);
+        group = [];
+      }
+      group.push(message);
+    }
+    if (group.length) groups.push(group);
+  }
+  return groups;
+}
+
 function summarySource(messages) {
   return messages.map((message) => {
     const role = message.role === "assistant" ? "助手" : message.role === "tool" ? `工具 ${message.name || ""}` : "用户";
@@ -793,6 +840,7 @@ async function createConversationSummary({ provider, model, summary, messages, s
     "请把下面较早的对话压缩成可供后续助手继续工作的上下文摘要。",
     "保留：用户目标和偏好、已确认事实、关键数据与原文引用、未完成任务、重要结论、代码/文件/链接、工具调用结果。",
     "不要编造；忽略寒暄和重复内容。按主题用紧凑 Markdown 输出，控制在约 " + targetTokens + " tokens 内。",
+    "图片本身不会进入摘要；若原消息附带图片，请明确记录哪些原图已省略，需要重新调取后才能判断图像细节。",
     summary ? `已有历史摘要（请合并并更新它）：\n${summary}` : "",
     `待压缩的原始消息：\n${summarySource(messages)}`
   ].filter(Boolean).join("\n\n");
@@ -817,8 +865,8 @@ function clearConversationCompaction(conv) {
   conv.messages.forEach((message) => delete message.compacted);
 }
 
-export async function compactConversation({ conv, systemContent, toolNames, provider, model, signal, limit, onStart }) {
-  const estimate = () => contextUsageFor({ conv, systemContent, toolNames, limit }).estimatedTokens;
+export async function compactConversation({ conv, systemContent, toolNames, provider, model, signal, limit, onStart, extraTokens = 0 }) {
+  const estimate = () => contextUsageFor({ conv, systemContent, toolNames, limit }).estimatedTokens + extraTokens;
   if (estimate() <= limit) return false;
   onStart?.();
 
@@ -829,7 +877,12 @@ export async function compactConversation({ conv, systemContent, toolNames, prov
   // Compress in bounded chunks. This keeps the summarization request below
   // the same configured limit even when a conversation has grown far beyond it.
   for (let pass = 0; pass < 8 && estimate() > limit; pass++) {
-    const turns = turnsForCompaction(conv.messages.filter((message) => !message.compacted));
+    checkAbort(signal);
+    const active = conv.messages.filter((message) => !message.compacted);
+    let turns = turnsForCompaction(active);
+    if (turns.length < 2 || estimateMessagesTokens(turns[turns.length - 1]) > keepBudget) {
+      turns = groupsForCompaction(active);
+    }
     if (turns.length < 2) break;
 
     const keep = [];
@@ -846,11 +899,15 @@ export async function compactConversation({ conv, systemContent, toolNames, prov
 
     const batch = [];
     let batchTokens = estimateTextTokens(conv.compaction?.summary);
-    for (const message of candidates) {
-      const messageTokens = estimateMessageTokens(message);
-      if (batch.length && batchTokens + messageTokens > sourceBudget) break;
-      batch.push(message);
-      batchTokens += messageTokens;
+    for (const group of groupsForCompaction(candidates)) {
+      const groupTokens = estimateMessagesTokens(group);
+      if (batch.length && batchTokens + groupTokens > sourceBudget) break;
+      // 完整工具组不能拆；过大的单组明确报错，保留原文供调整预算后继续。
+      if (batchTokens + groupTokens > limit * 0.8) {
+        throw new Error("单个工具轮次超过摘要预算，请提高上下文上限或减少工具返回内容");
+      }
+      batch.push(...group);
+      batchTokens += groupTokens;
     }
     if (!batch.length) break;
 
@@ -862,6 +919,7 @@ export async function compactConversation({ conv, systemContent, toolNames, prov
       signal,
       limit
     });
+    checkAbort(signal);
     batch.forEach((message) => { message.compacted = true; });
     conv.compaction = {
       summary: nextSummary,
@@ -871,11 +929,28 @@ export async function compactConversation({ conv, systemContent, toolNames, prov
     compacted = true;
   }
 
+  if (estimate() > limit) throw new Error("上下文仍超过预算，已保留历史；请提高上限或减少本轮内容");
   return compacted;
 }
 
-async function handleChat(port, req) {
+async function handleChat(port, req, task = sessions.get(port)) {
+  const signal = task.abort.signal;
+  const checkTask = () => {
+    checkAbort(signal);
+    if (sessions.get(port) !== task) throw new DOMException("任务已替换", "AbortError");
+  };
+  const emit = (message) => {
+    checkTask();
+    send(port, message);
+  };
+  const persist = async () => {
+    checkTask();
+    await upsertConversation(conv, { signal });
+    checkTask();
+  };
+  checkTask();
   const state = await loadState();
+  checkTask();
   const settings = state.settings;
   const provider = findProvider(state, req.providerId || settings.providerId);
   if (!provider) throw new Error("未选择模型提供方");
@@ -891,6 +966,7 @@ async function handleChat(port, req) {
     .filter((skill) => skill?.enabled !== false);
   const skill = skills[0] || null;
   const tab = await getTab(req.tabId);
+  checkTask();
   if (tab?.url && (settings.disabledSites || []).some((p) => matchSite(p, tab.url))) {
     throw new Error(`已在 ${hostOf(tab.url)} 禁用 Skilldock`);
   }
@@ -947,7 +1023,7 @@ async function handleChat(port, req) {
   const includePage = req.includePage !== false && (skills.length ? skills.some((item) => item.tools?.readPage) : settings.readPageByDefault);
   const toolNames = toolNamesFor(settings, skills);
   if (includePage && tab?.id) {
-    const ctx = await collectContext(tab.id, req.extraTabIds || [], toolCache);
+    const ctx = await withAbort(collectContext(tab.id, req.extraTabIds || [], toolCache, signal), signal);
     // 每个页面在会话里只附一次：历史消息里已含该 URL 的上下文块则跳过，
     // 页面有更新时模型可自行调 read_page 重读
     const prior = conv.messages.map((m) => m.content || "").join("\n");
@@ -972,7 +1048,7 @@ async function handleChat(port, req) {
   });
   // 先落盘再开始流式：若本轮请求失败（429 重试耗尽、网络错误、压缩摘要失败等），
   // 这条用户消息也已持久化，后续按 id 编辑重发才不会报“找不到要编辑的消息”
-  await upsertConversation(conv);
+  await persist();
 
   const systemParts = [settings.systemPrompt || ""];
   skills.forEach((item) => {
@@ -998,12 +1074,12 @@ async function handleChat(port, req) {
     toolNames,
     provider,
     model,
-    signal: sessions.get(port)?.abort.signal,
+    signal,
     limit,
-    onStart: () => send(port, { type: "compacting" })
+    onStart: () => emit({ type: "compacting" })
   });
   conv.contextUsage = contextUsageFor({ conv, systemContent, toolNames, limit });
-  const llmMessages = [
+  const modelMessages = () => [
     { role: "system", content: systemContent },
     ...(conv.compaction?.summary ? [{
       role: "system",
@@ -1014,42 +1090,85 @@ async function handleChat(port, req) {
 
   const assistantId = uid("msg");
   const t0 = Date.now();
-  send(port, { type: "conversation", conversation: conv, contextUsage: conv.contextUsage });
-  send(port, { type: "assistant_start", id: assistantId });
+  emit({ type: "conversation", conversation: conv, contextUsage: conv.contextUsage });
+  emit({ type: "assistant_start", id: assistantId });
 
   let full = "";
   let thinking = "";
   let roundThinking = "";
   let roundSig = "";
+  let pendingImages = [];
   const maxRounds = 12;
-  let roundMessages = llmMessages;
+  let roundMessages = modelMessages();
   const failedTools = new Set();
   let usedTools = false;
   let lastUsage = null;
 
+  task.stopSnapshot = () => {
+    const stopped = structuredClone(conv);
+    // 中途停止多工具轮时补齐未确认结果，避免下一次发送孤立的 tool_calls。
+    const results = new Set(stopped.messages.filter((m) => m.role === "tool").map((m) => m.toolCallId));
+    for (const message of stopped.messages) {
+      if (!message.id?.startsWith(assistantId + "_r")) continue;
+      for (const call of message.toolCalls || []) {
+        if (!results.has(call.id)) stopped.messages.push({
+          id: uid("tool"), role: "tool", name: call.name, toolCallId: call.id,
+          content: "工具调用中断，结果未确认；不要假定操作未执行。", createdAt: Date.now()
+        });
+      }
+    }
+    stopped.messages.push(...structuredClone(pendingImages));
+    stopped.messages.push({
+      id: assistantId, role: "assistant", content: full || "(已停止)",
+      createdAt: Date.now(), elapsedMs: Date.now() - t0
+    });
+    return { conversation: stopped, id: assistantId, text: full };
+  };
+
   async function consumeStream(names) {
+    checkTask();
+    const transient = roundMessages.filter((message) => message.transient);
+    const compacted = await compactConversation({
+      conv, systemContent, toolNames: names, provider, model, signal, limit,
+      extraTokens: estimateMessagesTokens(transient),
+      onStart: () => emit({ type: "compacting" })
+    });
+    checkTask();
+    if (compacted) {
+      await persist();
+      conv.contextUsage = contextUsageFor({ conv, systemContent, toolNames: names, limit });
+      emit({ type: "compacted", contextUsage: conv.contextUsage });
+    }
+    roundMessages = [...modelMessages(), ...transient];
     roundThinking = "";
     roundSig = "";
     let toolCalls = [];
+    checkTask();
     for await (const ev of streamChat({
       provider,
       model,
       messages: roundMessages,
       toolNames: names,
       thinking: req.thinking === true,
-      signal: sessions.get(port)?.abort.signal
+      signal
     })) {
+      checkTask();
       if (ev.type === "text") {
         full += ev.text;
-        send(port, { type: "delta", id: assistantId, text: ev.text });
+        emit({ type: "delta", id: assistantId, text: ev.text });
       } else if (ev.type === "thinking") {
         thinking += ev.text;
         roundThinking += ev.text;
-        send(port, { type: "thinking", id: assistantId, text: ev.text });
+        emit({ type: "thinking", id: assistantId, text: ev.text });
       } else if (ev.type === "thinking_sig") {
         roundSig = ev.signature;
       } else if (ev.type === "tool_calls") {
-        toolCalls = ev.calls || [];
+        // 同一请求可能分多次返回工具事件，按调用 id 合并完整记录。
+        for (const call of ev.calls || []) {
+          const index = toolCalls.findIndex((item) => item.id === call.id);
+          if (index < 0) toolCalls.push(call);
+          else toolCalls[index] = { ...toolCalls[index], ...call };
+        }
       } else if (ev.type === "usage") {
         // 多轮工具循环会多次请求，最后一次的 prompt 才覆盖完整上下文，覆盖即可
         lastUsage = ev.usage;
@@ -1086,18 +1205,21 @@ async function handleChat(port, req) {
         thinkingSignature: roundSig || undefined
       });
 
+      // 工具前的正文已在 assistant 消息中，后面的 partial 只属于下一段。
+      full = "";
       let allFailed = true;
       const resultCache = new Map();
       for (const call of normalized) {
+        checkTask();
         const args = safeJson(call.arguments) || {};
         const cacheKey = `${call.name}|${JSON.stringify(args)}`;
         const cached = resultCache.has(cacheKey);
         if (!cached) {
-          send(port, { type: "tool", id: call.id, name: call.name, args: call.arguments, status: "running" });
+          emit({ type: "tool", id: call.id, name: call.name, args: call.arguments, status: "running" });
         }
         let allowed = true;
         if (!cached && RISK_TOOLS.has(call.name) && settings.browserControl) {
-          allowed = await waitPermission(port, call);
+          allowed = await waitPermission(port, call, signal);
         }
         let result;
         try {
@@ -1106,9 +1228,10 @@ async function handleChat(port, req) {
           } else if (failedTools.has(call.name) && !TOOL_DEFS.some((t) => t.name === call.name)) {
             result = `已拒绝重复调用未知工具 ${call.name}。请根据已有上下文直接作答。`;
           } else {
-            result = allowed ? await runTool(call.name, args, { tabId: tab?.id, cache: toolCache, webSearchEnabled: settings.webSearchEnabled !== false }) : "用户拒绝了此操作";
+            result = allowed ? await withAbort(runTool(call.name, args, { tabId: tab?.id, cache: toolCache, webSearchEnabled: settings.webSearchEnabled !== false, signal }), signal) : "用户拒绝了此操作";
           }
         } catch (e) {
+          checkTask();
           result = `工具失败: ${e.message}`;
         }
         resultCache.set(cacheKey, result);
@@ -1117,7 +1240,7 @@ async function handleChat(port, req) {
         const resText = String(resObj.text ?? "");
         if (!resText.startsWith("未知工具") && !resText.startsWith("已拒绝") && !resText.startsWith("无法")) allFailed = false;
         if (resText.startsWith("未知工具")) failedTools.add(call.name);
-        send(port, {
+        emit({
           type: "tool",
           id: call.id,
           name: call.name,
@@ -1149,15 +1272,21 @@ async function handleChat(port, req) {
             fromTool: call.name,
             createdAt: Date.now()
           };
-          conv.messages.push(imgMsg);
-          roundMessages.push(imgMsg);
-          send(port, { type: "toolimg", id: imgMsg.id, images: resObj.images });
+          // 同一条 assistant 的全部 tool 结果必须连续，图片放在结果组之后。
+          pendingImages.push(imgMsg);
+          emit({ type: "toolimg", id: imgMsg.id, images: resObj.images });
         }
       }
+      conv.messages.push(...pendingImages);
+      roundMessages.push(...pendingImages);
+      pendingImages = [];
+      // 一轮工具全部完成后保存调用、结果和图片，下一轮断流也能继续。
+      await persist();
       full = "";
       if (allFailed) {
         roundMessages.push({
           role: "user",
+          transient: true,
           content: "工具不可用或已提供页面内容。请不要再调用工具，直接根据用户消息里的页面上下文完成技能任务。"
         });
         await consumeStream([]);
@@ -1167,23 +1296,26 @@ async function handleChat(port, req) {
     if (usedTools && !full.trim()) {
       roundMessages.push({
         role: "user",
+        transient: true,
         content: "请不要再调用工具，直接输出最终回答。"
       });
       await consumeStream([]);
     }
   } catch (err) {
-    if (err.name === "AbortError") {
-      conv.messages.push({
-        id: assistantId,
-        role: "assistant",
-        content: full || "(已停止)",
-        createdAt: Date.now(),
-        elapsedMs: Date.now() - t0
-      });
-      await upsertConversation(conv);
-      send(port, { type: "stopped", id: assistantId, text: full, conversation: conv });
-      return;
-    }
+    if (signal.aborted || sessions.get(port) !== task) return;
+    if (err.name === "AbortError") throw err;
+    // 普通网络/协议错误也保留已完成的工具轮次和本轮部分正文。
+    conv.messages.push(...pendingImages);
+    pendingImages = [];
+    conv.messages.push({
+      id: assistantId,
+      role: "assistant",
+      content: `${full}${full ? "\n\n" : ""}（回答中断，连接失败）`,
+      thinking,
+      createdAt: Date.now(),
+      elapsedMs: Date.now() - t0
+    });
+    await persist();
     throw err;
   }
 
@@ -1191,7 +1323,7 @@ async function handleChat(port, req) {
   // 补一条明确提示而非空白气泡，避免被误认为扩展故障；done 不重渲染气泡，故需同步 delta 给 UI
   if (!full.trim() && !thinking.trim() && !usedTools) {
     full = "（模型返回了空响应，可能是上游瞬时故障，请稍后重试）";
-    send(port, { type: "delta", id: assistantId, text: full });
+    emit({ type: "delta", id: assistantId, text: full });
   }
 
   conv.messages.push({
@@ -1217,31 +1349,59 @@ async function handleChat(port, req) {
     conv.contextUsage.cachedTokens = lastUsage.cached || 0;
     conv.contextUsage.completionTokens = lastUsage.completion;
   }
-  await upsertConversation(conv);
-  send(port, { type: "done", id: assistantId, conversation: conv });
+  await persist();
+  emit({ type: "done", id: assistantId, conversation: conv });
 }
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "skilldock") return;
-  sessions.set(port, { abort: new AbortController() });
+  sessions.set(port, { abort: new AbortController(), done: Promise.resolve() });
   port.onMessage.addListener(async (msg) => {
     if (msg.type === "stop") {
-      sessions.get(port)?.abort.abort();
-      sessions.set(port, { abort: new AbortController() });
+      const task = sessions.get(port);
+      if (!task || task.abort.signal.aborted) return;
+      const snapshot = task.stopSnapshot?.();
+      task.abort.abort();
+      const running = task.done;
+      task.stopWrite = new AbortController();
+      task.done = (async () => {
+        await running;
+        if (sessions.get(port) !== task) return;
+        // 只有调度层可以提交停止快照；被取消的旧任务不再触碰 storage/UI。
+        try {
+          if (snapshot) await upsertConversation(snapshot.conversation, { signal: task.stopWrite.signal });
+          if (sessions.get(port) === task) send(port, { type: "stopped", ...snapshot });
+        } catch (err) {
+          if (sessions.get(port) === task) send(port, { type: "error", error: err.message || String(err) });
+        }
+      })();
+      await task.done;
       return;
     }
     if (msg.type === "chat") {
-      sessions.get(port)?.abort.abort();
-      sessions.set(port, { abort: new AbortController() });
-      try {
-        await handleChat(port, msg);
-      } catch (err) {
-        send(port, { type: "error", error: err.message || String(err) });
-      }
+      const previous = sessions.get(port);
+      previous?.abort.abort();
+      previous?.stopWrite?.abort();
+      const task = { abort: new AbortController() };
+      sessions.set(port, task);
+      task.done = (async () => {
+        // 等待旧任务已提交的写入完成，再读最新历史，杜绝旧结果覆盖新任务。
+        await previous?.done;
+        if (task.abort.signal.aborted || sessions.get(port) !== task) return;
+        try {
+          await handleChat(port, msg, task);
+        } catch (err) {
+          if (!task.abort.signal.aborted && sessions.get(port) === task) {
+            send(port, { type: "error", error: err.message || String(err) });
+          }
+        }
+      })();
+      await task.done;
     }
   });
   port.onDisconnect.addListener(() => {
     sessions.get(port)?.abort.abort();
+    sessions.get(port)?.stopWrite?.abort();
     sessions.delete(port);
   });
 });

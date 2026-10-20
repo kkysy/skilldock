@@ -204,24 +204,129 @@ function sleepWithAbort(ms, signal) {
   });
 }
 
-async function* iterateSSE(response) {
-  const reader = response.body.getReader();
+const STREAM_TIMEOUT_MS = 90000;
+
+function streamError(message, name = "StreamProtocolError") {
+  const error = new Error(message);
+  error.name = name;
+  return error;
+}
+
+// 每次尝试独立计时和取消，不依赖 AbortSignal.any/timeout 的浏览器版本。
+function createStreamRequest(signal) {
+  const controller = new AbortController();
+  let timer;
+  let failure;
+  let rejectAbort;
+  const aborted = new Promise((_, reject) => { rejectAbort = reject; });
+  const onAbort = () => {
+    failure = new DOMException("已停止", "AbortError");
+    controller.abort(failure);
+    rejectAbort(failure);
+  };
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
+  // 即使在首次 wait 前取消，也不会产生未处理的 rejection。
+  aborted.catch(() => {});
+  const arm = (phase) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      failure = streamError(`${phase}超时（90 秒无新数据），请重试`, "StreamTimeoutError");
+      controller.abort(failure);
+      rejectAbort(failure);
+    }, STREAM_TIMEOUT_MS);
+  };
+  const wait = (promise) => Promise.race([promise, aborted]);
+  return {
+    wait,
+    activity: () => arm("流不活动"),
+    async fetch(url, init) {
+      if (failure) throw failure;
+      arm("等待响应首包");
+      let response;
+      try {
+        response = await wait(fetch(url, { ...init, signal: controller.signal }));
+      } catch (error) {
+        if (failure) throw failure;
+        error.streamNetworkError = true;
+        throw error;
+      }
+      arm("等待首个数据字节");
+      return response;
+    },
+    close() {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      controller.abort();
+    }
+  };
+}
+
+async function responseError(res, provider, request) {
+  const text = await request.wait(res.text());
+  const error = new Error(`${provider.name} ${res.status}: ${text.slice(0, 500)}`);
+  error.status = res.status;
+  return error;
+}
+
+function validateToolCalls(calls) {
+  for (const call of calls) {
+    // 空对象也是完整 JSON；空字符串或半截参数都不能降级成 {} 执行。
+    const args = safeJson(call.arguments);
+    if (!call.id || !call.name || !args || typeof args !== "object" || Array.isArray(args)) {
+      throw streamError(`工具调用不完整或参数 JSON 无效：${call.name || "未知工具"}`);
+    }
+  }
+  return calls;
+}
+
+async function* iterateSSE(response, request) {
+  const reader = response.body?.getReader();
+  if (!reader) throw streamError("模型响应没有可读取的数据流");
   const decoder = new TextDecoder();
   let buf = "";
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const chunks = buf.split("\n");
-    buf = chunks.pop() || "";
-    for (const line of chunks) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const data = trimmed.slice(5).trim();
-      if (!data || data === "[DONE]") continue;
-      const json = safeJson(data);
-      if (json) yield json;
+  const parse = (chunk) => {
+    const lines = chunk.split(/\r?\n/);
+    const data = lines.filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).replace(/^ /, "")).join("\n").trim();
+    if (!data) return null;
+    if (data === "[DONE]") return { sseDone: true };
+    const json = safeJson(data);
+    if (!json || typeof json !== "object") throw streamError("模型返回了无效的 SSE JSON");
+    if (json.error || json.type === "error" || lines.some((line) => /^event:\s*error\s*$/.test(line))) {
+      throw streamError(`模型流错误：${json.error?.message || json.message || JSON.stringify(json.error || json)}`);
     }
+    return json;
+  };
+  try {
+    while (true) {
+      let result;
+      try {
+        result = await request.wait(reader.read());
+      } catch (error) {
+        if (error.name !== "AbortError" && error.name !== "StreamTimeoutError") error.streamNetworkError = true;
+        throw error;
+      }
+      const { value, done } = result;
+      if (done) break;
+      if (value?.byteLength) request.activity();
+      buf += decoder.decode(value, { stream: true });
+      const chunks = buf.split(/\r?\n\r?\n/);
+      buf = chunks.pop() || "";
+      for (const chunk of chunks) {
+        const event = parse(chunk);
+        if (event) yield event;
+      }
+    }
+    buf += decoder.decode();
+    if (buf.trim()) {
+      const event = parse(buf);
+      if (event) yield event;
+    }
+  } finally {
+    // 超时/取消/提前退出均释放 reader；不等待可能已经损坏的连接完成关闭。
+    reader.cancel().catch(() => {});
+    reader.releaseLock();
   }
 }
 
@@ -259,7 +364,7 @@ function toOpenAIMessages(messages) {
   });
 }
 
-async function* streamOpenAI({ provider, model, messages, toolNames, thinking, signal }) {
+async function* streamOpenAI({ provider, model, messages, toolNames, thinking, signal, request }) {
   const url = `${provider.baseUrl.replace(/\/$/, "")}/chat/completions`;
   const body = {
     model,
@@ -281,43 +386,20 @@ async function* streamOpenAI({ provider, model, messages, toolNames, thinking, s
     headers["HTTP-Referer"] = "https://skilldock.local";
     headers["X-Title"] = "Skilldock";
   }
-  async function post() {
-    return fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal });
-  }
-  // 429 多为上游全局并发池瞬时打满（如 StepFun step-5-preview 的 scene-global 限制），
-  // 与本地请求量无关，指数退避重试几次通常即可穿过；重试耗尽仍按原样抛错
-  async function postWithRetry() {
-    let delay = 800;
-    for (let attempt = 0; ; attempt++) {
-      const res = await post();
-      if (res.status !== 429 || attempt >= 3) return res;
-      await res.text().catch(() => {});
-      await sleepWithAbort(delay, signal);
-      delay *= 2;
-    }
-  }
-  let res;
-  if (thinking) {
-    // 非推理模型（如 gpt-4o）会拒绝 reasoning_effort，此时降级重试一次
-    body.reasoning_effort = "medium";
-    res = await postWithRetry();
-    if (!res.ok) {
-      const err = await res.text();
-      if (!/reasoning/i.test(err)) {
-        throw new Error(`${provider.name} ${res.status}: ${err.slice(0, 500)}`);
-      }
-      delete body.reasoning_effort;
-      res = await postWithRetry();
-    }
-  } else {
-    res = await postWithRetry();
-  }
+  const post = () => request.fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+  if (thinking) body.reasoning_effort = "medium";
+  let res = await post();
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`${provider.name} ${res.status}: ${err.slice(0, 500)}`);
+    const error = await responseError(res, provider, request);
+    // 仅参数兼容错误降级，429 交给统一重试处理。
+    if (!thinking || error.status === 429 || !/reasoning/i.test(error.message)) throw error;
+    delete body.reasoning_effort;
+    res = await post();
   }
+  if (!res.ok) throw await responseError(res, provider, request);
   const toolAcc = {};
-  for await (const ev of iterateSSE(res)) {
+  let complete = false;
+  for await (const ev of iterateSSE(res, request)) {
     // 不 continue：部分供应商（如 StepFun step_plan）在每个 chunk 都附带 usage，跳过会吞掉正文；
     // 只在末尾发 usage 的供应商其末尾 chunk choices 为空，下方 delta 分支自然跳过，无副作用
     if (ev.usage) {
@@ -330,7 +412,14 @@ async function* streamOpenAI({ provider, model, messages, toolNames, thinking, s
         }
       };
     }
+    if (ev.sseDone) { complete = true; break; }
     const choice = ev.choices?.[0];
+    if (choice?.finish_reason) {
+      if (!["stop", "tool_calls"].includes(choice.finish_reason)) {
+        throw streamError(`模型输出未正常完成：${choice.finish_reason}`);
+      }
+      complete = true;
+    }
     const delta = choice?.delta || {};
     if (delta.content) yield { type: "text", text: delta.content };
     if (delta.reasoning || delta.reasoning_content) {
@@ -348,13 +437,13 @@ async function* streamOpenAI({ provider, model, messages, toolNames, thinking, s
       }
     }
   }
+  if (!complete) throw streamError("模型流被截断：未收到完成标记");
   const calls = Object.values(toolAcc)
-    .filter((c) => c.name)
     .map((c) => ({
       ...c,
       name: canonicalToolName(c.name, toolNames)
     }));
-  if (calls.length) yield { type: "tool_calls", calls };
+  if (calls.length) yield { type: "tool_calls", calls: validateToolCalls(calls) };
 }
 
 function splitSystem(messages) {
@@ -363,7 +452,7 @@ function splitSystem(messages) {
   return { system, rest };
 }
 
-async function* streamAnthropic({ provider, model, messages, toolNames, thinking, signal }) {
+async function* streamAnthropic({ provider, model, messages, toolNames, thinking, signal, request }) {
   const { system, rest } = splitSystem(messages);
   const converted = [];
   for (const m of rest) {
@@ -423,7 +512,7 @@ async function* streamAnthropic({ provider, model, messages, toolNames, thinking
   if (thinking) body.thinking = { type: "enabled", budget_tokens: 4000 };
   const tools = anthropicTools(toolNames);
   if (tools.length) body.tools = tools;
-  const res = await fetch(`${provider.baseUrl.replace(/\/$/, "")}/v1/messages`, {
+  const res = await request.fetch(`${provider.baseUrl.replace(/\/$/, "")}/v1/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -434,15 +523,21 @@ async function* streamAnthropic({ provider, model, messages, toolNames, thinking
     body: JSON.stringify(body),
     signal
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`${provider.name} ${res.status}: ${err.slice(0, 500)}`);
-  }
+  if (!res.ok) throw await responseError(res, provider, request);
+  let complete = false;
+  let toolUse = false;
   let currentTool = null;
   let thinkSig = "";
   const calls = [];
   const usageAcc = {};
-  for await (const ev of iterateSSE(res)) {
+  for await (const ev of iterateSSE(res, request)) {
+    if (ev.type === "message_stop") { complete = true; break; }
+    if (ev.type === "message_delta" && ev.delta?.stop_reason) {
+      if (!["end_turn", "tool_use", "stop_sequence"].includes(ev.delta.stop_reason)) {
+        throw streamError(`模型输出未正常完成：${ev.delta.stop_reason}`);
+      }
+      toolUse = ev.delta.stop_reason === "tool_use";
+    }
     if (ev.type === "message_start" && ev.message?.usage) {
       const u = ev.message.usage;
       usageAcc.prompt = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
@@ -452,7 +547,7 @@ async function* streamAnthropic({ provider, model, messages, toolNames, thinking
       usageAcc.completion = ev.usage.output_tokens;
     }
     if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
-      currentTool = { id: ev.content_block.id, name: ev.content_block.name, arguments: "" };
+      currentTool = { id: ev.content_block.id, name: ev.content_block.name, arguments: "", input: ev.content_block.input };
     }
     if (ev.type === "content_block_delta") {
       if (ev.delta?.type === "text_delta" && ev.delta.text) yield { type: "text", text: ev.delta.text };
@@ -462,6 +557,8 @@ async function* streamAnthropic({ provider, model, messages, toolNames, thinking
     }
     if (ev.type === "content_block_stop") {
       if (currentTool) {
+        if (!currentTool.arguments) currentTool.arguments = JSON.stringify(currentTool.input || {});
+        delete currentTool.input;
         calls.push(currentTool);
         currentTool = null;
       }
@@ -470,10 +567,10 @@ async function* streamAnthropic({ provider, model, messages, toolNames, thinking
         thinkSig = "";
       }
     }
-    if (ev.type === "message_delta" && ev.delta?.stop_reason === "tool_use") {
-      yield { type: "tool_calls", calls };
-    }
   }
+  if (!complete || currentTool) throw streamError("模型流被截断：未收到完整 message_stop");
+  if (calls.length && !toolUse) throw streamError("工具调用缺少完整的 tool_use 结束状态");
+  if (toolUse && calls.length) yield { type: "tool_calls", calls: validateToolCalls(calls) };
   if (usageAcc.prompt != null || usageAcc.completion != null) {
     yield { type: "usage", usage: { prompt: usageAcc.prompt, completion: usageAcc.completion, cached: usageAcc.cached || 0 } };
   }
@@ -521,7 +618,7 @@ function toGeminiContents(messages) {
   return merged;
 }
 
-async function* streamGemini({ provider, model, messages, toolNames, thinking, signal }) {
+async function* streamGemini({ provider, model, messages, toolNames, thinking, signal, request }) {
   const { system } = splitSystem(messages);
   const url = `${provider.baseUrl.replace(/\/$/, "")}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(provider.apiKey)}`;
   const body = { contents: toGeminiContents(messages) };
@@ -529,17 +626,18 @@ async function* streamGemini({ provider, model, messages, toolNames, thinking, s
   if (thinking) body.generationConfig = { thinkingConfig: { includeThoughts: true } };
   const tools = geminiTools(toolNames);
   if (tools.length) body.tools = tools;
-  const res = await fetch(url, {
+  const res = await request.fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     signal
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`${provider.name} ${res.status}: ${err.slice(0, 500)}`);
-  }
-  for await (const ev of iterateSSE(res)) {
+  if (!res.ok) throw await responseError(res, provider, request);
+  let complete = false;
+  const callAcc = new Map();
+  const callPrefix = Math.random().toString(36).slice(2, 9);
+  let nextCall = 0;
+  for await (const ev of iterateSSE(res, request)) {
     if (ev.usageMetadata) {
       yield {
         type: "usage",
@@ -551,33 +649,59 @@ async function* streamGemini({ provider, model, messages, toolNames, thinking, s
       };
     }
     const cand = ev.candidates?.[0];
+    if (cand?.finishReason) {
+      if (cand.finishReason !== "STOP") throw streamError(`模型输出未正常完成：${cand.finishReason}`);
+      complete = true;
+    }
     const parts = cand?.content?.parts || [];
-    const calls = [];
     for (const p of parts) {
       if (p.text) yield { type: p.thought ? "thinking" : "text", text: p.text };
       if (p.functionCall) {
-        calls.push({
-          id: `call_${p.functionCall.name}_${Math.random().toString(36).slice(2, 7)}`,
-          name: p.functionCall.name,
-          arguments: JSON.stringify(p.functionCall.args || {})
+        const fc = p.functionCall;
+        // 有 id 的增量/快照合并；无 id 时保留为独立调用，避免误吞同名工具。
+        const id = fc.id || `call_${callPrefix}_${nextCall++}`;
+        const previous = callAcc.get(id);
+        if (fc.args != null && (typeof fc.args !== "object" || Array.isArray(fc.args))) {
+          throw streamError("Gemini 工具参数必须是完整的 JSON 对象");
+        }
+        const args = { ...(previous ? JSON.parse(previous.arguments) : {}), ...(fc.args || {}) };
+        callAcc.set(id, {
+          id,
+          name: fc.name || previous?.name,
+          arguments: JSON.stringify(args)
         });
       }
     }
-    if (calls.length) yield { type: "tool_calls", calls };
   }
+  if (!complete) throw streamError("模型流被截断：未收到 finishReason");
+  const calls = [...callAcc.values()];
+  if (calls.length) yield { type: "tool_calls", calls: validateToolCalls(calls) };
 }
 
 export async function* streamChat(opts) {
   const kind = opts.provider.kind || "openai";
-  if (kind === "anthropic") {
-    yield* streamAnthropic(opts);
-    return;
+  const stream = kind === "anthropic" ? streamAnthropic : kind === "gemini" ? streamGemini : streamOpenAI;
+  let published = false;
+  for (let attempt = 0; ; attempt++) {
+    const request = createStreamRequest(opts.signal);
+    let retry = false;
+    try {
+      for await (const event of stream({ ...opts, request })) {
+        if (["text", "thinking", "tool_calls"].includes(event.type)) published = true;
+        yield event;
+      }
+      return;
+    } catch (error) {
+      // 已向上层输出内容后不得静默重放，否则会重复正文或工具操作。
+      retry = !opts.signal?.aborted && !published && attempt < 3 &&
+        (error.status === 429 || error.streamNetworkError === true || error.name === "StreamTimeoutError");
+      if (!retry) throw error;
+    } finally {
+      request.close();
+    }
+    // 429、读流网络错误与超时共用最多三次指数退避，等待期间仍可停止。
+    if (retry) await sleepWithAbort(800 * 2 ** attempt, opts.signal);
   }
-  if (kind === "gemini") {
-    yield* streamGemini(opts);
-    return;
-  }
-  yield* streamOpenAI(opts);
 }
 
 export async function listRemoteModels(provider) {

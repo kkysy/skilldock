@@ -1,6 +1,6 @@
 import {
   loadState,
-  saveState,
+  saveSettings,
   findProvider,
   deleteConversation,
   newConversation,
@@ -308,7 +308,11 @@ function ensurePort() {
 
 function setBusy(on) {
   streaming = on;
-  if (!on) setComposerLocked(false);
+  if (!on) {
+    setComposerLocked(false);
+    pendingPerm = null;
+    hidePopup(els.perm);
+  }
   els.btnSend.classList.toggle("hidden", on);
   els.btnStop.classList.toggle("hidden", !on);
   updateSendState();
@@ -880,6 +884,11 @@ function onPort(msg) {
     setComposerLocked(true);
     showWorking(t("正在压缩上下文", language()));
   }
+  if (msg.type === "compacted") {
+    setComposerLocked(false);
+    if (msg.contextUsage) renderContextUsage(msg.contextUsage);
+    showWorking();
+  }
   if (msg.type === "conversation") {
     if (msg.contextUsage) renderContextUsage(msg.contextUsage);
     activeId = msg.conversation.id;
@@ -1318,7 +1327,7 @@ function newChat() {
 async function persistSelection() {
   state.settings.providerId = els.provider.value;
   state.settings.model = els.model.value;
-  await saveState(state);
+  await saveSettings({ providerId: els.provider.value, model: els.model.value });
 }
 
 async function init() {
@@ -1388,11 +1397,11 @@ async function init() {
   els.model.addEventListener("change", persistSelection);
   els.thinking.addEventListener("change", () => {
     state.settings.thinkingDefault = els.thinking.checked;
-    saveState(state);
+    saveSettings({ thinkingDefault: els.thinking.checked });
   });
   els.includePage.addEventListener("change", () => {
     state.settings.readPageByDefault = els.includePage.checked;
-    saveState(state);
+    saveSettings({ readPageByDefault: els.includePage.checked });
   });
   els.historySearch.addEventListener("input", renderHistory);
   chrome.storage.onChanged.addListener((changes, area) => {

@@ -1,4 +1,4 @@
-import { loadState, saveState, exportBundle, importBundle, emptyState, DEFAULT_PROVIDERS, sortProviders } from "../shared/storage.js";
+import { loadState, saveSettings, updateState, exportBundle, importBundle, emptyState, DEFAULT_PROVIDERS, sortProviders } from "../shared/storage.js";
 import { listRemoteModels } from "../shared/providers.js";
 import { uid } from "../shared/utils.js";
 import { localizeDocument, normalizeLanguage, t } from "../shared/i18n.js";
@@ -7,6 +7,27 @@ import { renderMarkdown } from "../shared/markdown.js";
 const $ = (id) => document.getElementById(id);
 let state;
 let generalSaveTimer;
+
+// 只更新目标条目的字段，不把设置页打开时的旧会话快照写回。
+async function saveItem(collection, id, patch, create = false) {
+  const fields = structuredClone(patch);
+  const next = await updateState((latest) => {
+    const item = latest[collection].find((entry) => entry.id === id);
+    if (item) Object.assign(item, fields);
+    else if (create) latest[collection].push({ id, ...fields });
+    else throw new Error("该条目已删除，请刷新设置页后重试");
+    return latest;
+  });
+  state[collection] = next[collection];
+}
+
+async function removeItem(collection, id) {
+  const next = await updateState((latest) => {
+    latest[collection] = latest[collection].filter((entry) => entry.id !== id);
+    return latest;
+  });
+  state[collection] = next[collection];
+}
 
 // 供视觉测试用：?theme=light|dark 直接覆盖主题，无需扩展环境
 const previewTheme = new URLSearchParams(location.search).get("theme");
@@ -80,9 +101,10 @@ function readGeneralSettings() {
 async function saveGeneralSettings() {
   clearTimeout(generalSaveTimer);
   generalSaveTimer = undefined;
-  Object.assign(state.settings, readGeneralSettings());
+  const patch = readGeneralSettings();
+  Object.assign(state.settings, patch);
   try {
-    await saveState(state);
+    await saveSettings(patch);
   } catch (error) {
     console.error("Failed to auto-save general settings", error);
   }
@@ -137,21 +159,21 @@ function renderProviders() {
     i.addEventListener("change", () => {
       const p = state.providers.find((x) => x.id === i.dataset.key);
       p.apiKey = i.value.trim();
-      saveState(state);
+      saveItem("providers", p.id, { apiKey: p.apiKey });
     })
   );
   $("providerList").querySelectorAll("[data-url]").forEach((i) =>
     i.addEventListener("change", () => {
       const p = state.providers.find((x) => x.id === i.dataset.url);
       p.baseUrl = i.value.trim();
-      saveState(state);
+      saveItem("providers", p.id, { baseUrl: p.baseUrl });
     })
   );
   $("providerList").querySelectorAll("[data-models]").forEach((i) =>
     i.addEventListener("change", () => {
       const p = state.providers.find((x) => x.id === i.dataset.models);
       p.models = i.value.split(",").map((s) => s.trim()).filter(Boolean);
-      saveState(state);
+      saveItem("providers", p.id, { models: p.models });
     })
   );
   $("providerList").querySelectorAll("[data-reload]").forEach((b) =>
@@ -161,8 +183,7 @@ function renderProviders() {
       if (label) label.textContent = t("拉取中…", language());
       try {
         const models = await listRemoteModels(p);
-        if (models.length) p.models = models.slice(0, 80);
-        await saveState(state);
+        if (models.length) await saveItem("providers", p.id, { models: models.slice(0, 80) });
         renderProviders();
       } catch (e) {
         if (label) label.textContent = e.message;
@@ -171,8 +192,7 @@ function renderProviders() {
   );
   $("providerList").querySelectorAll("[data-delp]").forEach((b) =>
     b.addEventListener("click", async () => {
-      state.providers = state.providers.filter((p) => p.id !== b.dataset.delp);
-      await saveState(state);
+      await removeItem("providers", b.dataset.delp);
       renderProviders();
     })
   );
@@ -293,8 +313,7 @@ function renderSkills() {
   });
   $("skillList").querySelectorAll("[data-dels]").forEach((b) =>
     b.addEventListener("click", async () => {
-      state.skills = state.skills.filter((s) => s.id !== b.dataset.dels);
-      await saveState(state);
+      await removeItem("skills", b.dataset.dels);
       if (editingSkillId === b.dataset.dels) resetSkillForm();
       else renderSkills();
     })
@@ -303,7 +322,7 @@ function renderSkills() {
     input.addEventListener("change", async () => {
       const s = state.skills.find((x) => x.id === input.dataset.toggles);
       s.enabled = input.checked;
-      await saveState(state);
+      await saveItem("skills", s.id, { enabled: s.enabled });
       renderSkills();
     })
   );
@@ -358,15 +377,13 @@ async function init() {
     const name = $("cName").value.trim();
     const baseUrl = $("cUrl").value.trim();
     if (!name || !baseUrl) return;
-    state.providers.push({
-      id: uid("prov"),
+    await saveItem("providers", uid("prov"), {
       name,
       kind: "openai",
       baseUrl,
       apiKey: $("cKey").value.trim(),
       models: $("cModels").value.split(",").map((s) => s.trim()).filter(Boolean)
-    });
-    await saveState(state);
+    }, true);
     $("cName").value = $("cUrl").value = $("cKey").value = $("cModels").value = "";
     renderProviders();
   });
@@ -396,15 +413,12 @@ async function init() {
       }
     };
     if (editId) {
-      const s = state.skills.find((x) => x.id === editId);
-      if (s) Object.assign(s, payload);
-      await saveState(state);
+      await saveItem("skills", editId, payload);
       renderSkills();
       updateSkillSaveState();
       showSkillMsg(t("技能已更新", language()));
     } else {
-      state.skills.push({ id: uid("sk"), ...payload });
-      await saveState(state);
+      await saveItem("skills", uid("sk"), payload, true);
       resetSkillForm();
       showSkillMsg(t("技能已保存", language()));
     }
@@ -423,8 +437,8 @@ async function init() {
     if (!file) return;
     try {
       const bundle = JSON.parse(await file.text());
-      importBundle(state, bundle);
-      await saveState(state);
+      // 显式导入仍按备份替换其包含的字段；未包含的会话使用存储中的最新值。
+      state = await updateState((latest) => importBundle(latest, bundle));
       fillGeneral();
       renderProviders();
       renderSkills();

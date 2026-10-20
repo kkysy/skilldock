@@ -194,11 +194,36 @@ export async function saveState(state) {
   return state;
 }
 
-export async function updateState(mutator) {
-  const state = await loadState();
-  const next = await mutator(state) || state;
-  await saveState(next);
-  return next;
+// 扩展页面和 worker 共用写锁，避免设置补丁与会话检查点读改写相互覆盖。
+let stateWriteQueue = Promise.resolve();
+
+export function updateState(mutator, { signal } = {}) {
+  const update = async () => {
+    const check = () => {
+      if (signal?.aborted) throw new DOMException("已停止", "AbortError");
+    };
+    check();
+    const state = await loadState();
+    check();
+    const next = await mutator(state) || state;
+    check();
+    await saveState(next);
+    return next;
+  };
+  if (globalThis.navigator?.locks) {
+    return navigator.locks.request("skilldock-state", update);
+  }
+  // 不支持 Web Locks 的环境至少保证当前上下文内串行写入。
+  const pending = stateWriteQueue.then(update);
+  stateWriteQueue = pending.catch(() => {});
+  return pending;
+}
+
+export function saveSettings(patch) {
+  return updateState((state) => {
+    state.settings = { ...state.settings, ...patch };
+    return state;
+  });
 }
 
 export async function getSettings() {
@@ -232,7 +257,7 @@ export function newConversation(partial = {}) {
   };
 }
 
-export async function upsertConversation(conv) {
+export async function upsertConversation(conv, { signal } = {}) {
   return updateState((state) => {
     const i = state.conversations.findIndex((c) => c.id === conv.id);
     conv.updatedAt = now();
@@ -243,7 +268,7 @@ export async function upsertConversation(conv) {
     }
     state.activeConversationId = conv.id;
     return state;
-  });
+  }, { signal });
 }
 
 export async function deleteConversation(id) {
