@@ -102,10 +102,27 @@
         <label class="item switch-row">
           <div class="item-main">
             <span class="item-title">允许联网搜索</span>
-            <span class="item-desc">允许 AI 通过 DuckDuckGo 搜索公开网页。关闭后，所有技能都不能使用网络搜索。</span>
+            <span class="item-desc">允许 AI 搜索公开网页并引用外部信源。关闭后，所有技能都不能使用网络搜索。</span>
           </div>
           <input id="webSearchEnabled" type="checkbox" class="switch" />
         </label>
+        <div class="item">
+          <div class="item-main">
+            <span class="item-title">搜索服务</span>
+            <span class="item-desc">DeepSeek 搜索按次计费（约 5 元 / 1000 次），查询词会发送给 api.deepseek.com。选「关闭」时不发起任何外部搜索。</span>
+          </div>
+          <select id="searchProvider" class="inline">
+            <option value="off">关闭</option>
+            <option value="deepseek">DeepSeek</option>
+          </select>
+        </div>
+        <div class="item col">
+          <div class="item-main">
+            <span class="item-title">搜索 API Key</span>
+            <span class="item-desc">联网搜索单独使用的 DeepSeek API Key。留空时会复用对话模型里同样是 DeepSeek 的 Key；两者都没有则不向模型提供搜索工具。</span>
+          </div>
+          <input id="searchApiKey" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false" />
+        </div>
         <label class="item switch-row">
           <div class="item-main">
             <span class="item-title">默认附带当前页内容</span>

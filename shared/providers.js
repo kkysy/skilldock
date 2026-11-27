@@ -33,12 +33,12 @@ export function canonicalToolName(raw, allowed = []) {
 export const TOOL_DEFS = [
   {
     name: "read_page",
-    description: "Read one sequential segment of the main text of the current (or specified) tab. The result includes start, end, total, hasMore, and nextStart; when hasMore is true, call read_page again with nextStart before answering questions that require the whole page.",
+    description: "Read one sequential segment of the main text of the current (or specified) tab. The result includes start, end, total, hasMore, nextStart and a page version; when hasMore is true, call read_page again with nextStart before answering questions that require the whole page. A 'start' returned by search_page can be passed here directly as long as the page version is unchanged.",
     parameters: {
       type: "object",
       properties: {
-        tabId: { type: "number", description: "Optional Chrome tab id. Defaults to the active tab." },
-        start: { type: "integer", description: "Starting character position from the previous result's nextStart. Defaults to 0." }
+        tabId: { type: "number", description: "Optional Chrome tab id. Defaults to the tab switched to most recently in this turn." },
+        start: { type: "integer", description: "Starting character position from the previous result's nextStart, or a match position returned by search_page. Defaults to 0." }
       }
     }
   },
@@ -49,21 +49,21 @@ export const TOOL_DEFS = [
   },
   {
     name: "extract_links",
-    description: "Extract hyperlinks from the current page.",
+    description: "Extract hyperlinks, split into links inside the article body and other page links (navigation, footer). Deduplicated; prefer the body links for citations.",
     parameters: { type: "object", properties: {} }
   },
   {
     name: "search_page",
-    description: "Search the current page text for a query and return nearby snippets.",
+    description: "Search the current page text (the same text read_page returns) and return matches with their character offsets, which can be passed to read_page(start=...) to jump straight there. Tries the exact phrase first, then falls back to keyword AND within a ±200 character window; unmatched keywords are reported so the query can be adjusted.",
     parameters: {
       type: "object",
-      properties: { query: { type: "string" } },
+      properties: { query: { type: "string", description: "Phrase or space-separated keywords." } },
       required: ["query"]
     }
   },
   {
     name: "open_tab",
-    description: "Open a URL in a tab. If a tab with this URL is already open, it is activated instead of opening a duplicate.",
+    description: "Open a URL in a background tab and make it this turn's working tab. If a tab with this URL is already open, it is activated instead of opening a duplicate. Tools without an explicit tabId read this tab afterwards.",
     parameters: {
       type: "object",
       properties: { url: { type: "string" } },
@@ -72,7 +72,7 @@ export const TOOL_DEFS = [
   },
   {
     name: "switch_tab",
-    description: "Activate (bring to front) an already-open tab, identified by tabId from list_tabs or by URL. Use this instead of open_tab when the page is already open.",
+    description: "Activate an already-open tab and make it this turn's working tab, so later tools without an explicit tabId read it. Use this instead of open_tab when the page is already open.",
     parameters: {
       type: "object",
       properties: {
@@ -113,10 +113,14 @@ export const TOOL_DEFS = [
   },
   {
     name: "web_search",
-    description: "Search the public web and return title, URL, and snippet results. To read a result page, call read_search_result with its URL; do not open a browser tab just to read it.",
+    description: "Search the public web and return title, URL, snippet and site. Set content=true to also receive the page text of the top 3 results (use it when you must quote or verify facts); that costs significant tokens. If the tool reports that search is unavailable, do not call it again in this turn.",
     parameters: {
       type: "object",
-      properties: { query: { type: "string" } },
+      properties: {
+        query: { type: "string" },
+        count: { type: "integer", description: "Number of results, 1-6 (at most 3 when content is true). Defaults to 5." },
+        content: { type: "boolean", description: "Return the page text of the results (top 3 only). Defaults to false." }
+      },
       required: ["query"]
     }
   },

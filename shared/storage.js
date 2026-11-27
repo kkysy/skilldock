@@ -157,6 +157,9 @@ export function emptyState() {
       sidepanelStartup: "recent",
       browserControl: true,
       webSearchEnabled: true,
+      // 搜索服务：off（默认关闭）/ deepseek（DeepSeek 官方搜索 API）
+      searchProvider: "off",
+      searchApiKey: "",
       readPageByDefault: true,
       thinkingDefault: false,
       contextTokenLimit: 200000,

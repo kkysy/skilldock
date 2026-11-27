@@ -74,6 +74,8 @@ function fillGeneral() {
   $("sidepanelStartup").value = s.sidepanelStartup === "new" ? "new" : "recent";
   $("browserControl").checked = s.browserControl;
   $("webSearchEnabled").checked = s.webSearchEnabled !== false;
+  $("searchProvider").value = s.searchProvider === "deepseek" ? "deepseek" : "off";
+  $("searchApiKey").value = s.searchApiKey || "";
   $("readPageByDefault").checked = s.readPageByDefault;
   $("thinkingDefault").checked = !!s.thinkingDefault;
   $("contextTokenLimit").value = Math.max(16000, Number(s.contextTokenLimit) || 200000);
@@ -90,6 +92,8 @@ function readGeneralSettings() {
     sidepanelStartup: $("sidepanelStartup").value === "new" ? "new" : "recent",
     browserControl: $("browserControl").checked,
     webSearchEnabled: $("webSearchEnabled").checked,
+    searchProvider: $("searchProvider").value === "deepseek" ? "deepseek" : "off",
+    searchApiKey: $("searchApiKey").value.trim(),
     readPageByDefault: $("readPageByDefault").checked,
     thinkingDefault: $("thinkingDefault").checked,
     contextTokenLimit: Math.min(2000000, Math.max(16000, Number($("contextTokenLimit").value) || 200000)),
@@ -350,11 +354,11 @@ async function init() {
     scheduleGeneralSave();
   });
   $("fontSize").addEventListener("change", saveGeneralSettings);
-  ["sidepanelStartup", "contextTokenLimit"].forEach((id) => $(id).addEventListener("change", saveGeneralSettings));
+  ["sidepanelStartup", "contextTokenLimit", "searchProvider"].forEach((id) => $(id).addEventListener("change", saveGeneralSettings));
   ["selectionToolbar", "browserControl", "webSearchEnabled", "readPageByDefault", "thinkingDefault"].forEach((id) => {
     $(id).addEventListener("change", saveGeneralSettings);
   });
-  ["disabledSites", "systemPrompt"].forEach((id) => {
+  ["disabledSites", "systemPrompt", "searchApiKey"].forEach((id) => {
     $(id).addEventListener("input", scheduleGeneralSave);
     $(id).addEventListener("change", saveGeneralSettings);
   });

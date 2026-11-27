@@ -44,7 +44,7 @@ Skilldock is a Chromium Manifest V3 extension that puts a bring-your-own-key AI 
 
 Skilldock stores its settings, providers, API keys, skills, and conversation history in `chrome.storage.local`. It does not operate a Skilldock server or require an account.
 
-When you send a message, the selected model provider receives the message and any context you explicitly include or have enabled (for example, page text, attachments, and page images). When global web search is enabled—and, for a custom skill, that skill also permits it—the extension queries DuckDuckGo's HTML search endpoint and may retrieve a selected public result page for the answer. Review each provider's privacy terms before using it with sensitive content.
+When you send a message, the selected model provider receives the message and any context you explicitly include or have enabled (for example, page text, attachments, and page images). When global web search is enabled—and, for a custom skill, that skill also permits it—the extension sends your query to the DeepSeek search API (`api.deepseek.com`), which requires its own API key in Settings, and may retrieve the text of a selected result page for the answer. Review each provider's privacy terms before using it with sensitive content.
 
 ## Install from source
 

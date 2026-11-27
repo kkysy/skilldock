@@ -51,24 +51,66 @@
     return url.length <= 1200000 ? url : null;
   }
 
-  function pageImageCandidates(limit = 20) {
+  // 图片候选：list_page_images 与 send_page_image 共用同一套规则，序号才不会漂移。
+  // 懒加载图的 naturalWidth 常为 0，尺寸优先取布局尺寸；srcset 取最大一档拿高清。
+  const UI_IMAGE_RE = /(^|[^a-z])(qr|qrcode|app[-_ ]?store|google[-_ ]?play|logo|icon|avatar|emoji|badge|sprite)([^a-z]|$)/i;
+
+  function largestFromSrcset(srcset) {
+    let best = "";
+    let bestW = -1;
+    for (const part of String(srcset || "").split(",")) {
+      const [url, desc] = part.trim().split(/\s+/);
+      if (!url) continue;
+      const w = Number(String(desc || "").replace(/[^\d.]/g, "")) || 0;
+      if (w > bestW) {
+        bestW = w;
+        best = url;
+      }
+    }
+    return best;
+  }
+
+  function imageCandidates(limit = 20) {
+    const root = readableRoot();
     const seen = new Set();
-    return [...document.images]
-      .map((im) => ({
-        src: im.currentSrc || im.src,
-        alt: (im.alt || "").trim().slice(0, 120),
-        w: im.naturalWidth,
-        h: im.naturalHeight
-      }))
-      .filter((c) => c.w >= 200 && c.h >= 150 && /^https?:/.test(c.src) && !seen.has(c.src) && seen.add(c.src))
-      .sort((a, b) => b.w * b.h - a.w * a.h)
-      .slice(0, limit)
-      .map((c, i) => ({ index: i, ...c }));
+    const out = [];
+    for (const im of document.images) {
+      const raw = largestFromSrcset(im.getAttribute("srcset")) || im.currentSrc || im.src || im.getAttribute("data-src") || "";
+      let src = "";
+      try {
+        src = new URL(raw, location.href).href;
+      } catch {
+        continue;
+      }
+      if (!/^https?:/i.test(src) || seen.has(src)) continue;
+      const rect = im.getBoundingClientRect();
+      const w = Math.round(rect.width) || im.naturalWidth || Number(im.getAttribute("width")) || 0;
+      const h = Math.round(rect.height) || im.naturalHeight || Number(im.getAttribute("height")) || 0;
+      const alt = (im.alt || "").trim().slice(0, 120);
+      const inArticle = !!(root && root !== document.body && root.contains(im));
+      const likelyUi = UI_IMAGE_RE.test(`${alt} ${im.className || ""} ${src}`);
+      // 0×0 + 无 alt + 无懒加载属性 + 不在正文里：多半是统计/广告像素。
+      // 懒加载图带 data-src / srcset，正文图 inArticle 为真，都不会被误判
+      const lazy = !!(im.getAttribute("data-src") || im.getAttribute("data-srcset") || im.getAttribute("srcset"));
+      const likelyPixel = !likelyUi && w === 0 && h === 0 && !alt && !inArticle && !lazy;
+      // 界面装饰图降权，但仍保留（避免过滤掉真正需要的图）
+      if (!likelyUi && w > 0 && h > 0 && (w < 120 || h < 80)) continue;
+      seen.add(src);
+      out.push({ index: 0, src, alt, w, h, likelyUi, likelyPixel, inArticle });
+    }
+    out.sort(
+      (a, b) =>
+        Number(b.inArticle) - Number(a.inArticle) ||
+        Number(a.likelyPixel) - Number(b.likelyPixel) ||
+        Number(a.likelyUi) - Number(b.likelyUi) ||
+        b.w * b.h - a.w * a.h
+    );
+    return out.slice(0, limit).map((c, i) => ({ ...c, index: i }));
   }
 
   async function grabPageImages(limit = 4) {
     const out = [];
-    for (const c of pageImageCandidates(limit)) {
+    for (const c of imageCandidates(limit)) {
       try {
         const dataUrl = await imgToJpeg(c.src);
         if (dataUrl) out.push({ src: c.src, alt: c.alt, dataUrl });
@@ -80,11 +122,11 @@
   }
 
   function listPageImages() {
-    return { ok: true, images: pageImageCandidates(20) };
+    return { ok: true, version: pageSnapshot().version, images: imageCandidates(20) };
   }
 
   async function getPageImage(index, url) {
-    const cands = pageImageCandidates(50);
+    const cands = imageCandidates(50);
     const want = String(url || "").trim();
     const cand = want ? cands.find((c) => c.src === want) : cands[Number(index) || 0];
     if (!cand) return { ok: false, error: want ? "页面上找不到这张图片。" : "页面上没有这个序号的图片，请先列出页面图片。" };
@@ -118,8 +160,43 @@
     return (clone.innerText || clone.textContent || "").replace(/\s+/g, " ").trim();
   }
 
+  // 页面文本快照：read_page 与 search_page 必须基于同一份文本，
+  // 搜索给出的 start 才能直接用于 read_page(start=...)。版本号用于标记内容是否已变。
+  const SNAPSHOT_TTL_MS = 5000;
+  let snapshot = null;
+
+  function invalidateSnapshot() {
+    snapshot = null;
+  }
+  window.addEventListener("load", invalidateSnapshot);
+  window.addEventListener("popstate", invalidateSnapshot);
+  window.addEventListener("hashchange", invalidateSnapshot);
+
+  function hashText(text) {
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i += 7) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(36);
+  }
+
+  function pageSnapshot() {
+    const now = Date.now();
+    if (snapshot && snapshot.href === location.href && now - snapshot.at < SNAPSHOT_TTL_MS) return snapshot;
+    const text = extractPageText();
+    snapshot = {
+      text,
+      href: location.href,
+      at: now,
+      version: `${text.length.toString(36)}-${hashText(text)}`
+    };
+    return snapshot;
+  }
+
   async function extractPage(withImages, start = 0, maxLength = 10000) {
-    const fullText = extractPageText();
+    const snap = pageSnapshot();
+    const fullText = snap.text;
     const totalLength = fullText.length;
     const begin = Math.max(0, Math.min(Number(start) || 0, totalLength));
     const end = maxLength === 0 ? totalLength : Math.min(begin + Math.max(1, Number(maxLength) || 10000), totalLength);
@@ -128,6 +205,7 @@
       ok: true,
       title: document.title,
       url: location.href,
+      version: snap.version,
       text,
       selection: window.getSelection()?.toString() || "",
       contentInfo: {
@@ -141,34 +219,150 @@
     };
     if (withImages) page.images = await grabPageImages(4);
     // 图片元数据（不含字节流）随手附上，供背景页告知模型本页有哪些图可按需调取
-    page.imageList = pageImageCandidates(10);
+    page.imageList = imageCandidates(10);
     return page;
   }
 
+  const TRACKING_PARAM_RE = /^(utm_\w+|xtor|fbclid|gclid|yclid|msclkid|at_medium|at_ptr_name|at_campaign|spm|ref_src|ref_url|igshid|mc_cid|mc_eid)$/i;
+
+  // 去重键：只去掉 fragment 与明确的跟踪参数，保留可能决定资源身份的 query
+  function linkKey(href) {
+    try {
+      const u = new URL(href);
+      u.hash = "";
+      for (const key of [...u.searchParams.keys()]) {
+        if (TRACKING_PARAM_RE.test(key)) u.searchParams.delete(key);
+      }
+      return u.href.replace(/\/+$/, "");
+    } catch {
+      return href;
+    }
+  }
+
   function extractLinks() {
-    const links = [...document.querySelectorAll("a[href]")].map((a) => ({
-      text: (a.innerText || a.getAttribute("aria-label") || "").trim().slice(0, 120),
-      href: a.href
-    })).filter((l) => l.href && !l.href.startsWith("javascript:"));
-    return { ok: true, links };
+    const root = readableRoot();
+    const seen = new Set();
+    const inside = [];
+    const others = [];
+    const collect = (nodes, bucket) => {
+      for (const a of nodes) {
+        const raw = a.getAttribute("href") || "";
+        if (!raw || raw.startsWith("#") || /^javascript:/i.test(raw)) continue;
+        const href = a.href;
+        if (!/^https?:/i.test(href)) continue;
+        const text = (a.innerText || a.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim().slice(0, 120);
+        if (!text) continue;
+        const key = linkKey(href);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        bucket.push({ text, href });
+      }
+    };
+    if (root && root !== document.body && root !== document.documentElement) {
+      collect(root.querySelectorAll("a[href]"), inside);
+    }
+    collect(document.querySelectorAll("a[href]"), others);
+    return { ok: true, inside: inside.slice(0, 30), others: others.slice(0, 20), insideTotal: inside.length, othersTotal: others.length };
+  }
+
+  // 检索：短语优先，失败退回「关键词 AND + 邻近窗口」，并给出可跳读的字符偏移。
+  const SEARCH_STOPWORDS = new Set([
+    "the", "a", "an", "of", "in", "on", "at", "to", "for", "and", "or", "is", "are", "was", "were",
+    "be", "been", "being", "by", "with", "from", "that", "this", "these", "those", "it", "its", "as",
+    "they", "we", "you", "i", "has", "have", "had", "not", "but", "so", "if", "then", "than", "into",
+    "over", "after", "before", "about", "his", "her", "their", "our", "your", "who", "which", "what"
+  ]);
+
+  // 长度 1:1 的归一化：只做字符替换与大小写，偏移仍对应原文
+  function searchHaystack(text) {
+    return String(text || "")
+      .replace(/[\u2018\u2019\u201c\u201d"'()[\]{}<>;:!?,]/g, " ")
+      .toLowerCase();
+  }
+
+  function occurrences(hay, token, cap) {
+    const list = [];
+    let from = 0;
+    while (list.length < cap) {
+      const i = hay.indexOf(token, from);
+      if (i < 0) break;
+      list.push(i);
+      from = i + token.length;
+    }
+    return list;
+  }
+
+  // 短语匹配允许词间任意空白：标点已被替换成空格，硬 indexOf 会把 "a, b" 判成不匹配
+  function phraseMatches(hay, needle, cap) {
+    const parts = needle.split(" ").filter(Boolean).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    if (!parts.length) return [];
+    const re = new RegExp(parts.join("\\s+"), "g");
+    const out = [];
+    let m;
+    while (out.length < cap && (m = re.exec(hay))) {
+      out.push({ start: m.index, length: m[0].length });
+      if (!m[0].length) re.lastIndex += 1;
+    }
+    return out;
   }
 
   function searchPage(query) {
-    const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
-    const q = normalize(query);
-    if (!q) return { ok: true, snippets: [] };
-    const text = normalize(document.body?.innerText || "");
-    const lower = text.toLowerCase();
-    const needle = q.toLowerCase();
-    const snippets = [];
-    let from = 0;
-    while (snippets.length < 8) {
-      const i = lower.indexOf(needle, from);
-      if (i < 0) break;
-      snippets.push(text.slice(Math.max(0, i - 120), i + q.length + 180).replace(/\s+/g, " "));
-      from = i + q.length;
+    const snap = pageSnapshot();
+    const text = snap.text;
+    const raw = String(query || "").replace(/\s+/g, " ").trim();
+    const base = { ok: true, version: snap.version, totalLength: text.length };
+    if (!raw) return { ...base, mode: "none", matches: [], missed: [], scattered: [] };
+
+    const hay = searchHaystack(text);
+    const needle = searchHaystack(raw).replace(/\s+/g, " ").trim();
+    const clip = (start, length, before) => {
+      const from = Math.max(0, start - (before ?? 120));
+      const to = Math.min(text.length, start + length + 200);
+      return { start, end: to, text: text.slice(from, to).trim() };
+    };
+
+    // 1) 连续短语
+    const phrase = phraseMatches(hay, needle, 5);
+    if (phrase.length) {
+      return {
+        ...base,
+        mode: "phrase",
+        matches: phrase.map((p) => clip(p.start, p.length)),
+        missed: [],
+        scattered: []
+      };
     }
-    return { ok: true, snippets };
+
+    // 2) 关键词 AND + 邻近窗口（±200 字符）
+    const tokens = [...new Set(needle.split(" ").filter((t) => t.length > 1))];
+    if (!tokens.length) return { ...base, mode: "none", matches: [], missed: [], scattered: [] };
+    const positions = new Map(tokens.map((t) => [t, occurrences(hay, t, 300)]));
+    const required = tokens.filter((t) => !SEARCH_STOPWORDS.has(t));
+    const need = required.length ? required : tokens;
+    const missed = need.filter((t) => (positions.get(t) || []).length === 0);
+    const scattered = tokens
+      .filter((t) => (positions.get(t) || []).length)
+      .map((t) => ({ token: t, start: positions.get(t)[0] }))
+      .slice(0, 5);
+
+    const rarest = need
+      .filter((t) => (positions.get(t) || []).length)
+      .sort((a, b) => positions.get(a).length - positions.get(b).length)[0];
+    const matches = [];
+    if (rarest) {
+      for (const center of positions.get(rarest)) {
+        if (matches.length >= 5) break;
+        const lo = Math.max(0, center - 200);
+        const hi = Math.min(hay.length, center + 200);
+        const complete = need.every((t) => (positions.get(t) || []).some((x) => x >= lo && x <= hi));
+        if (!complete) continue;
+        if (matches.some((m) => Math.abs(m.start - lo) < 150)) continue;
+        matches.push(clip(lo, 200, 0));
+      }
+    }
+    if (matches.length) return { ...base, mode: "and", matches, missed, scattered: [] };
+    if (!missed.length) return { ...base, mode: "scattered", matches: [], missed, scattered };
+    return { ...base, mode: "none", matches: [], missed, scattered };
   }
 
   function clickSel(selector) {

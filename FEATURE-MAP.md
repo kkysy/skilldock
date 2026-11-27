@@ -55,7 +55,7 @@
 | 技能决定可用哪些工具 | `toolNamesFor` |
 | 敏感操作前等用户确认 | `waitPermission` |
 | 收集当前页/附加标签页上下文 | `collectContext` |
-| 联网搜索（DuckDuckGo） | `webSearch` / `fetchSearchResultPage` |
+| 联网搜索（DeepSeek Search API，可在设置里关闭） | `webSearch` / `readSearchPage` |
 | 网页正文/图片提取（注入页面执行） | `extractPageFn` / `listImagesFn` / `getImageFn` |
 | 浏览器操作工具（点击/填写/滚动/打开/切换标签页） | `clickFn` / `fillFn` / `scrollFn` / `searchPageFn`；`open_tab`/`switch_tab` 在 `runTool`，标签页查找/激活在 `findTabByUrl` / `activateTab` |
 | 右键菜单（总结页面等） | 顶部 `chrome.contextMenus.create` |
