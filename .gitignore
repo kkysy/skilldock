@@ -11,6 +11,9 @@ Desktop.ini
 .env
 .env.*
 !.env.example
+# Scratch files (dispatch notes, extracted page text, throwaway scripts)
+.tmp/
+tmp/
 
 # Build, package, and test output
 dist/
